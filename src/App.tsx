@@ -112,22 +112,27 @@ export default function App() {
     activeRoomRef.current = activeRoom;
   }, [activeRoom]);
 
-  // First Entry Welcome Bonus (500 UGX)
+  // Welcome Bonus: Granted strictly ONCE to real created accounts (never on every app launch, and never to guests)
   useEffect(() => {
     if (!currentUser) return;
-    if (!currentUser.welcomeBonusClaimed || currentUser.walletBalance === undefined) {
-      const initialBalance = (currentUser.walletBalance === undefined || currentUser.walletBalance === 0) ? 500 : currentUser.walletBalance;
+    // Guests do not receive the welcome bonus
+    if (currentUser.isGuest || currentUser.id.startsWith('guest_')) {
+      return;
+    }
+
+    // Only grant if the user has a real created account and has NOT claimed the welcome bonus yet
+    if (!currentUser.welcomeBonusClaimed) {
       const updatedUser: UserProfile = {
         ...currentUser,
-        walletBalance: initialBalance,
+        walletBalance: (currentUser.walletBalance !== undefined && currentUser.walletBalance > 0) ? currentUser.walletBalance : 500,
         welcomeBonusClaimed: true,
       };
       setCurrentUser(updatedUser);
       localStorage.setItem('checkers_user_profile', JSON.stringify(updatedUser));
       saveUserProfileToFirestore(updatedUser).catch(() => {});
-      showNotification('🎁 Welcome Bonus: 500 UGX added to your wallet for playing stakes!', 'info', 7000);
+      showNotification('🎁 Welcome Bonus: 500 UGX added to your new account!', 'info', 6000);
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.isGuest, currentUser?.welcomeBonusClaimed]);
 
   // Guest Lifecycle Cleanup: only clean up on explicit unload or logout
   useEffect(() => {

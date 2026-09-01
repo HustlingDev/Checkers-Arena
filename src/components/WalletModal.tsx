@@ -356,28 +356,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               </div>
             </div>
 
-            <div className="text-right space-y-1.5">
-              <div className="space-y-0.5">
-                <span className="text-[10px] text-emerald-400 font-bold block">
-                  Won: +{(currentUser.totalWon || 0).toLocaleString()} UGX
-                </span>
-                <span className="text-[10px] text-slate-400 block">
-                  Staked: {(currentUser.totalStaked || 0).toLocaleString()} UGX
-                </span>
-              </div>
-              {(currentUser.walletBalance || 0) > 0 && (
-                <button
-                  id="btn-clear-sandbox-balance"
-                  type="button"
-                  onClick={handleResetSandboxBalance}
-                  disabled={resettingBalance}
-                  className="text-[10px] px-2 py-1 rounded-lg bg-rose-950/70 border border-rose-800/80 text-rose-300 hover:bg-rose-900 hover:text-white transition flex items-center gap-1 ml-auto cursor-pointer"
-                  title="Clear old sandbox demo money"
-                >
-                  <Trash2 className="w-3 h-3 text-rose-400" />
-                  <span>{resettingBalance ? 'Clearing...' : 'Clear Sandbox (0 UGX)'}</span>
-                </button>
-              )}
+            <div className="text-right space-y-0.5">
+              <span className="text-[10px] text-emerald-400 font-bold block">
+                Won: +{(currentUser.totalWon || 0).toLocaleString()} UGX
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                Staked: {(currentUser.totalStaked || 0).toLocaleString()} UGX
+              </span>
             </div>
           </div>
         </div>
