@@ -574,8 +574,8 @@ app.post('/api/wallet/withdraw', async (req, res) => {
   try {
     const { userId, amount, phoneNumber, provider } = req.body;
     const parsed = Number(amount);
-    if (!userId || isNaN(parsed) || parsed < 500) {
-      return res.status(400).json({ success: false, message: 'Minimum withdrawal amount is 500 UGX.' });
+    if (!userId || isNaN(parsed) || parsed < 1000) {
+      return res.status(400).json({ success: false, message: 'Minimum withdrawal amount is 1,000 UGX.' });
     }
 
     if (!phoneNumber || phoneNumber.trim().length < 9) {
@@ -1591,6 +1591,7 @@ function executeBotTurn(room: GameRoom) {
 // Helper: Calculate Game Service Fee based on stake amount
 function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
+  if (stakeAmount === 200) return 30;
   if (stakeAmount === 500) return 30;
   if (stakeAmount === 1000) return 55;
   if (stakeAmount === 2000) return 150;

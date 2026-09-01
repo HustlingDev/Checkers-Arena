@@ -45,6 +45,7 @@ interface StakeCardConfig {
   amount: number;
   label: string;
   badge: string;
+  watermark: string;
   badgeColor: string;
   gradient: string;
   borderColor: string;
@@ -55,70 +56,88 @@ interface StakeCardConfig {
 
 const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
   {
-    amount: 500,
-    label: '500 UGX',
-    badge: '🎁 Welcome Bonus Stake',
+    amount: 200,
+    label: '200 UGX',
+    badge: '🎁 A Layisi',
+    watermark: 'A LAYISI',
     badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
     gradient: 'from-amber-950/60 via-slate-900 to-amber-950/40',
     borderColor: 'border-amber-500/50 hover:border-amber-400',
     textColor: 'text-amber-400',
-    description: 'Use your 500 UGX welcome bonus to compete in real-time matches.',
+    description: 'Use your 200 UGX welcome bonus • Service Fee: 30 UGX',
     isPopular: true,
   },
   {
-    amount: 1000,
-    label: '1,000 UGX',
-    badge: '⚔️ Challenger Tier',
+    amount: 500,
+    label: '500 UGX',
+    badge: '⚔️ The Streets',
+    watermark: 'THE STREETS',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     gradient: 'from-emerald-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-emerald-500/40 hover:border-emerald-400',
     textColor: 'text-emerald-400',
-    description: 'Standard competitive stake arena for active checkers players.',
+    description: 'Competitive street match arena • Service Fee: 30 UGX',
   },
   {
-    amount: 2000,
-    label: '2,000 UGX',
-    badge: '🏆 Champion Arena',
+    amount: 1000,
+    label: '1,000 UGX',
+    badge: '⚡ Kawajyi',
+    watermark: 'KAWAJYI',
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
     gradient: 'from-cyan-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-cyan-500/40 hover:border-cyan-400',
     textColor: 'text-cyan-400',
-    description: 'Elevated stake level for seasoned checkers strategists.',
+    description: 'Standard challenger arena • Service Fee: 55 UGX',
+  },
+  {
+    amount: 2000,
+    label: '2,000 UGX',
+    badge: '🏆 Kagujje',
+    watermark: 'KAGUJJE',
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    gradient: 'from-indigo-950/50 via-slate-900 to-slate-950',
+    borderColor: 'border-indigo-500/40 hover:border-indigo-400',
+    textColor: 'text-indigo-400',
+    description: 'Champion arena for seasoned strategists • Service Fee: 150 UGX',
   },
   {
     amount: 5000,
     label: '5,000 UGX',
-    badge: '👑 Master Tier',
+    badge: '👑 Abanene',
+    watermark: 'ABANENE',
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
     gradient: 'from-purple-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-purple-500/40 hover:border-purple-400',
     textColor: 'text-purple-400',
-    description: 'High-stake master games with dedicated matchmaking.',
+    description: 'Master tier arena for big players • Service Fee: 300 UGX',
   },
   {
     amount: 10000,
     label: '10,000 UGX',
-    badge: '💎 Grandmaster Tier',
+    badge: '💎 The Streets',
+    watermark: 'THE STREETS',
     badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     gradient: 'from-rose-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-rose-500/40 hover:border-rose-400',
     textColor: 'text-rose-400',
-    description: 'Elite showdown arena for serious checkers competitors.',
+    description: 'High stake street arena showdown • Service Fee: 550 UGX',
   },
   {
     amount: 20000,
     label: '20,000 UGX',
-    badge: '🔥 High Roller',
+    badge: '🔥 The Experts',
+    watermark: 'THE EXPERTS',
     badgeColor: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
     gradient: 'from-yellow-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-yellow-500/50 hover:border-yellow-400',
     textColor: 'text-yellow-400',
-    description: 'The maximum stake arena for high-level checkers matches.',
+    description: 'The maximum expert arena • Service Fee: 1,000 UGX',
   },
   {
     amount: 0,
     label: 'Free Play (0 UGX)',
-    badge: '⚡ Casual & Practice',
+    badge: '⚡ Practice',
+    watermark: 'PRACTICE',
     badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
     gradient: 'from-blue-950/40 via-slate-900 to-slate-950',
     borderColor: 'border-blue-500/30 hover:border-blue-400',
@@ -252,9 +271,6 @@ export const OnlineLobby: React.FC<OnlineLobbyProps> = ({
             >
               <Wallet className="w-3.5 h-3.5 stroke-[2.5]" />
               <span className="font-extrabold uppercase tracking-wide">Deposit</span>
-              <span className="bg-slate-950 text-emerald-300 text-[10px] font-black px-1.5 py-0.2 rounded-md font-mono">
-                {walletBalance.toLocaleString()} UGX
-              </span>
             </button>
 
             {/* Practice vs AI Bot */}
@@ -396,15 +412,20 @@ export const OnlineLobby: React.FC<OnlineLobbyProps> = ({
                     key={tier.amount}
                     id={`stake-card-${tier.amount}`}
                     onClick={() => handleEnterStakeSection(tier.amount)}
-                    className={`relative group bg-gradient-to-br ${tier.gradient} border ${tier.borderColor} rounded-xl p-2.5 flex flex-col justify-between gap-2 shadow hover:shadow-lg transition duration-150 cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.98] min-h-[140px]`}
+                    className={`relative group bg-gradient-to-br ${tier.gradient} border ${tier.borderColor} rounded-xl p-2.5 flex flex-col justify-between gap-2 shadow hover:shadow-lg transition duration-150 cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.98] min-h-[140px] overflow-hidden`}
                   >
+                    {/* Visual Card Watermark */}
+                    <div className="absolute -right-1 bottom-6 pointer-events-none select-none opacity-[0.08] group-hover:opacity-[0.14] text-[18px] sm:text-[22px] font-black uppercase tracking-widest leading-none z-0 transition-opacity transform -rotate-12 text-white">
+                      {tier.watermark}
+                    </div>
+
                     {tier.isPopular && (
-                      <div className="absolute -top-2 right-2 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-red-600 text-slate-950 text-[8px] font-black shadow uppercase tracking-wider flex items-center gap-0.5">
+                      <div className="relative z-10 self-end -mt-1 -mr-1 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-red-600 text-slate-950 text-[8px] font-black shadow uppercase tracking-wider flex items-center gap-0.5">
                         <Sparkles className="w-2 h-2" /> Welcome Bonus
                       </div>
                     )}
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative z-10">
                       <div className="flex items-center justify-between">
                         <span
                           className={`px-1.5 py-0.2 rounded text-[9px] font-black border ${tier.badgeColor}`}

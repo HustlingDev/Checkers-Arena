@@ -42,7 +42,7 @@ export const BottomAuthSheet: React.FC<BottomAuthSheetProps> = ({
   isOpen,
   onClose,
   onLoginSuccess,
-  defaultEmail = 'hackerug06@gmail.com',
+  defaultEmail = '',
   allowDismiss = true,
 }) => {
   const [tab, setTab] = useState<'signup' | 'google' | 'guest'>('signup');
@@ -65,14 +65,14 @@ export const BottomAuthSheet: React.FC<BottomAuthSheetProps> = ({
   if (!isOpen) return null;
 
   // Real user device Google Account
-  const deviceAccounts = [
+  const deviceAccounts = defaultEmail ? [
     {
       email: defaultEmail,
       name: defaultEmail.split('@')[0].toUpperCase(),
       avatarChar: defaultEmail.charAt(0).toUpperCase(),
       color: 'bg-emerald-600',
     },
-  ];
+  ] : [];
 
   // 1. Create Custom Account (Sign Up)
   const handleCreateAccount = async (e: React.FormEvent) => {
@@ -137,7 +137,7 @@ export const BottomAuthSheet: React.FC<BottomAuthSheetProps> = ({
         losses: 0,
         draws: 0,
         gamesPlayed: 0,
-        walletBalance: 500,
+        walletBalance: 200,
         welcomeBonusClaimed: true,
         status: 'online',
         isOnline: true,
@@ -287,7 +287,7 @@ export const BottomAuthSheet: React.FC<BottomAuthSheetProps> = ({
           losses: 0,
           draws: 0,
           gamesPlayed: 0,
-          walletBalance: 500,
+          walletBalance: 200,
           welcomeBonusClaimed: true,
           status: 'online',
           isOnline: true,

@@ -71,6 +71,7 @@ export interface StakeTier {
 
 export function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
+  if (stakeAmount === 200) return 30;
   if (stakeAmount === 500) return 30;
   if (stakeAmount === 1000) return 55;
   if (stakeAmount === 2000) return 150;
@@ -87,70 +88,99 @@ export function getNetGameWinnings(stakeAmount: number): number {
   return Math.max(0, total - fee);
 }
 
+export interface StakeTier {
+  id: string;
+  name: string;
+  amount: number;
+  label: string;
+  badge: string;
+  watermark: string;
+  category?: string;
+  description: string;
+  isFree?: boolean;
+}
+
 export const STAKE_TIERS: StakeTier[] = [
   {
     id: 'free',
     name: 'Free / Practice',
     amount: 0,
     label: 'Free (0 UGX)',
-    badge: 'Free Mode',
+    badge: 'Practice Mode',
+    watermark: 'Practice',
     category: 'Free Play',
     description: 'Play for ratings & practice with 0 cash required',
     isFree: true,
+  },
+  {
+    id: '200',
+    name: '200 UGX Stake',
+    amount: 200,
+    label: '200 UGX',
+    badge: 'A Layisi',
+    watermark: 'A Layisi',
+    category: 'Welcome Stake',
+    description: 'Entry: 200 UGX match arena • Service Fee: 30 UGX',
   },
   {
     id: '500',
     name: '500 UGX Stake',
     amount: 500,
     label: '500 UGX',
-    badge: '500 UGX',
-    category: 'Welcome Stake',
-    description: 'Entry: 500 UGX match arena',
+    badge: 'The Streets',
+    watermark: 'The Streets',
+    category: 'Street Arena',
+    description: 'Entry: 500 UGX match arena • Service Fee: 30 UGX',
   },
   {
     id: '1000',
     name: '1,000 UGX Stake',
     amount: 1000,
     label: '1,000 UGX',
-    badge: '1,000 UGX',
-    category: 'Casual Stakes',
-    description: 'Entry: 1,000 UGX match arena',
+    badge: 'Kawajyi',
+    watermark: 'Kawajyi',
+    category: 'Challenger',
+    description: 'Entry: 1,000 UGX match arena • Service Fee: 55 UGX',
   },
   {
     id: '2000',
     name: '2,000 UGX Stake',
     amount: 2000,
     label: '2,000 UGX',
-    badge: '2,000 UGX',
-    category: 'Popular Stakes',
-    description: 'Entry: 2,000 UGX match arena',
+    badge: 'Kagujje',
+    watermark: 'Kagujje',
+    category: 'Champion',
+    description: 'Entry: 2,000 UGX match arena • Service Fee: 150 UGX',
   },
   {
     id: '5000',
     name: '5,000 UGX Stake',
     amount: 5000,
     label: '5,000 UGX',
-    badge: '5,000 UGX',
-    category: 'Popular Stakes',
-    description: 'Entry: 5,000 UGX match arena',
+    badge: 'Abanene',
+    watermark: 'Abanene',
+    category: 'Master Arena',
+    description: 'Entry: 5,000 UGX match arena • Service Fee: 300 UGX',
   },
   {
     id: '10000',
     name: '10,000 UGX Stake',
     amount: 10000,
     label: '10,000 UGX',
-    badge: '10,000 UGX',
+    badge: 'The Streets',
+    watermark: 'The Streets',
     category: 'High Stakes',
-    description: 'Entry: 10,000 UGX match arena',
+    description: 'Entry: 10,000 UGX match arena • Service Fee: 550 UGX',
   },
   {
     id: '20000',
     name: '20,000 UGX Stake',
     amount: 20000,
     label: '20,000 UGX',
-    badge: '20,000 UGX',
-    category: 'High Stakes',
-    description: 'Entry: 20,000 UGX match arena',
+    badge: 'The Experts',
+    watermark: 'The Experts',
+    category: 'Elite Grandmaster',
+    description: 'Entry: 20,000 UGX match arena • Service Fee: 1,000 UGX',
   },
 ];
 

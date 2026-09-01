@@ -12,7 +12,6 @@ import {
   AlertCircle,
   X,
   RefreshCw,
-  ShieldCheck,
   Check,
   CreditCard,
   Trash2,
@@ -28,6 +27,23 @@ interface WalletModalProps {
   initialTab?: 'deposit' | 'withdraw' | 'history';
 }
 
+const DEPOSIT_PRESET_AMOUNTS = [
+  { amount: 500, label: '500 UGX', category: 'The Streets' },
+  { amount: 1000, label: '1,000 UGX', category: 'Kawajyi' },
+  { amount: 2000, label: '2,000 UGX', category: 'Kagujje' },
+  { amount: 5000, label: '5,000 UGX', category: 'Abanene' },
+  { amount: 10000, label: '10,000 UGX', category: 'The Streets' },
+  { amount: 20000, label: '20,000 UGX', category: 'The Experts' },
+];
+
+const CASHOUT_PRESET_AMOUNTS = [
+  { amount: 1000, label: '1,000 UGX' },
+  { amount: 2000, label: '2,000 UGX' },
+  { amount: 5000, label: '5,000 UGX' },
+  { amount: 10000, label: '10,000 UGX' },
+  { amount: 20000, label: '20,000 UGX' },
+];
+
 export const WalletModal: React.FC<WalletModalProps> = ({
   currentUser,
   isOpen,
@@ -36,9 +52,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   initialTab = 'deposit',
 }) => {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>(initialTab);
-  const [depositAmount, setDepositAmount] = useState<number>(5000);
-  const [customAmount, setCustomAmount] = useState<string>('');
-  const [phoneNumber, setPhoneNumber] = useState<string>(currentUser.phoneNumber || '');
+  const [depositAmount, setDepositAmount] = useState<number>(500);
+  const [withdrawAmount, setWithdrawAmount] = useState<number>(1000);
+  const [customWithdraw, setCustomWithdraw] = useState<string>('');
+
+  // Auto-link phone number directly from user profile
+  const profilePhone = currentUser.phoneNumber || currentUser.normalizedPhone || '';
   const [provider, setProvider] = useState<'mtn' | 'airtel'>('mtn');
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -57,23 +76,18 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       fetchTransactions();
+      if (profilePhone) {
+        detectProviderFromPhone(profilePhone);
+      }
     } else {
       resetActivePayment();
     }
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, [isOpen, currentUser.id]);
+  }, [isOpen, currentUser.id, profilePhone]);
 
-  const resetActivePayment = () => {
-    setPendingPromptTxId(null);
-    setPendingPromptRef(null);
-    setIsVerifying(false);
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-  };
-
-  const handlePhoneChange = (val: string) => {
-    setPhoneNumber(val);
+  const detectProviderFromPhone = (val: string) => {
     const clean = val.replace(/[\s\-\+]/g, '');
     if (
       clean.startsWith('077') ||
@@ -96,6 +110,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     }
   };
 
+  const resetActivePayment = () => {
+    setPendingPromptTxId(null);
+    setPendingPromptRef(null);
+    setIsVerifying(false);
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+  };
+
   const fetchTransactions = async () => {
     setTransactionsLoading(true);
     try {
@@ -110,7 +131,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     }
   };
 
-  // Reset Sandbox Balances to 0 UGX
+  // Reset Balance to 0 UGX for clean start
   const handleResetSandboxBalance = async () => {
     setResettingBalance(true);
     try {
@@ -134,7 +155,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
       setTransactions([]);
       setStatusMessage({
         type: 'success',
-        text: 'Sandbox balance successfully cleared! Available balance is now 0 UGX.',
+        text: 'Balance successfully cleared! Available balance is now 0 UGX.',
       });
     } catch (err: any) {
       console.error('Failed to reset balance:', err);
@@ -146,22 +167,27 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
   if (!isOpen) return null;
 
-  const effectiveDepositAmount = customAmount ? Number(customAmount) : depositAmount;
+  const effectiveDepositAmount = depositAmount;
+  const effectiveWithdrawAmount = customWithdraw ? Number(customWithdraw) : withdrawAmount;
+  const effectivePhoneNumber = profilePhone.trim();
 
-  // 1. Initiate PesaJet Mobile Money Prompt
+  // 1. Initiate Mobile Money Deposit
   const handleInitiatePesaJetDeposit = async () => {
     if (!effectiveDepositAmount || effectiveDepositAmount < 500) {
-      setStatusMessage({ type: 'error', text: 'Minimum deposit is 500 UGX' });
+      setStatusMessage({ type: 'error', text: 'Minimum deposit is 500 UGX.' });
       return;
     }
 
-    if (!phoneNumber || phoneNumber.trim().length < 9) {
-      setStatusMessage({ type: 'error', text: 'Please enter your Mobile Money phone number to receive the prompt.' });
+    if (!effectivePhoneNumber || effectivePhoneNumber.length < 9) {
+      setStatusMessage({
+        type: 'error',
+        text: 'No phone number attached to your profile. Please add your number in Settings.',
+      });
       return;
     }
 
     setLoading(true);
-    setStatusMessage({ type: 'info', text: 'Connecting to PesaJet Mobile Money API...' });
+    setStatusMessage({ type: 'info', text: 'Initiating Mobile Money deposit prompt...' });
 
     try {
       const res = await apiFetchJson('/api/pesajet/initiate-deposit', {
@@ -170,7 +196,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         body: JSON.stringify({
           userId: currentUser.id,
           amount: effectiveDepositAmount,
-          phoneNumber: phoneNumber.trim(),
+          phoneNumber: effectivePhoneNumber,
           provider,
           description: `Checkers Arena Deposit (${effectiveDepositAmount.toLocaleString()} UGX)`,
         }),
@@ -178,38 +204,41 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
       const data = res.data;
       if (!res.ok || !data || !data.success) {
-        throw new Error(data?.message || 'Failed to initiate Mobile Money deposit.');
+        throw new Error(data?.message || 'Failed to initiate deposit. Please try again.');
       }
 
-      setPendingPromptTxId(data.transactionId || null);
-      setPendingPromptRef(data.reference || null);
+      const txId = data.transactionId;
+      const ref = data.reference;
+      setPendingPromptTxId(txId);
+      setPendingPromptRef(ref);
+
       setStatusMessage({
         type: 'info',
-        text: `USSD Prompt sent to ${phoneNumber.trim()}! Please approve the payment with your Mobile Money PIN on your phone.`,
+        text: `PIN Prompt sent to ${effectivePhoneNumber}! Please enter your Mobile Money PIN on your phone.`,
       });
 
       // Start automatic polling every 3.5 seconds
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = setInterval(async () => {
-        if (data.transactionId || data.reference) {
-          const completed = await checkPesaJetPaymentStatus(data.transactionId, data.reference, false);
+        if (txId || ref) {
+          const completed = await checkPesaJetPaymentStatus(txId, ref, false);
           if (completed) {
             clearInterval(pollIntervalRef.current);
           }
         }
       }, 3500);
     } catch (err: any) {
-      console.error('PesaJet initiation error:', err);
+      console.error('Deposit error:', err);
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Payment initiation failed. Please check your phone number and network.',
+        text: err.message || 'Deposit initiation failed. Please try again.',
       });
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Check PesaJet Payment Status
+  // 2. Check Payment Status
   const checkPesaJetPaymentStatus = async (
     transactionId?: string | null,
     reference?: string | null,
@@ -224,10 +253,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({
       const data = res.data;
 
       if (data && (data.completed || data.status === 'COMPLETED' || data.status === 'SUCCESSFUL')) {
-        const newBal = data.walletBalance || (currentUser.walletBalance + effectiveDepositAmount);
+        const newBal = data.walletBalance || ((currentUser.walletBalance || 0) + effectiveDepositAmount);
         setStatusMessage({
           type: 'success',
-          text: `Payment Confirmed! +${effectiveDepositAmount.toLocaleString()} UGX credited to your wallet balance.`,
+          text: `Payment Confirmed! +${effectiveDepositAmount.toLocaleString()} UGX credited to your wallet.`,
         });
         onBalanceUpdated(newBal);
 
@@ -240,19 +269,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         setPendingPromptRef(null);
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         return true;
-      } else if (data && (data.failed || data.status === 'FAILED')) {
-        setStatusMessage({
-          type: 'error',
-          text: data.message || 'Payment was declined or cancelled on your mobile phone.',
-        });
-        setPendingPromptTxId(null);
-        setPendingPromptRef(null);
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        return true;
       } else if (showFeedback) {
         setStatusMessage({
           type: 'info',
-          text: 'Payment prompt is processing. Please check your phone and enter your Mobile Money PIN.',
+          text: 'Payment is pending. Please check your phone screen to approve with your PIN.',
         });
       }
       return false;
@@ -263,19 +283,22 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     }
   };
 
-  // 3. Withdrawal Cashout via PesaJet Mobile Money
+  // 3. Withdrawal Cashout via Mobile Money (Minimum 1,000 UGX)
   const handleWithdraw = async () => {
-    const amt = effectiveDepositAmount;
-    if (!amt || amt < 500) {
-      setStatusMessage({ type: 'error', text: 'Minimum withdrawal is 500 UGX' });
+    const amt = effectiveWithdrawAmount;
+    if (!amt || amt < 1000) {
+      setStatusMessage({ type: 'error', text: 'Minimum cashout amount is 1,000 UGX.' });
       return;
     }
     if ((currentUser.walletBalance || 0) < amt) {
-      setStatusMessage({ type: 'error', text: 'Insufficient balance to withdraw this amount' });
+      setStatusMessage({ type: 'error', text: 'Insufficient wallet balance for this cashout.' });
       return;
     }
-    if (!phoneNumber || phoneNumber.trim().length < 9) {
-      setStatusMessage({ type: 'error', text: 'Please enter a valid mobile number for cashout' });
+    if (!effectivePhoneNumber || effectivePhoneNumber.length < 9) {
+      setStatusMessage({
+        type: 'error',
+        text: 'No phone number attached to your profile. Please add your number in Settings.',
+      });
       return;
     }
 
@@ -287,7 +310,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         body: JSON.stringify({
           userId: currentUser.id,
           amount: amt,
-          phoneNumber: phoneNumber.trim(),
+          phoneNumber: effectivePhoneNumber,
           provider,
         }),
       });
@@ -296,7 +319,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         const newBal = data.walletBalance;
         setStatusMessage({
           type: 'success',
-          text: data.message || `Cashout of ${amt.toLocaleString()} UGX initiated to ${phoneNumber.trim()}!`,
+          text: data.message || `Cashout of ${amt.toLocaleString()} UGX initiated to ${effectivePhoneNumber}!`,
         });
         onBalanceUpdated(newBal);
 
@@ -306,10 +329,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
         fetchTransactions();
       } else {
-        setStatusMessage({ type: 'error', text: data?.message || 'Withdrawal failed. Please check your balance.' });
+        setStatusMessage({ type: 'error', text: data?.message || 'Cashout failed. Please check your balance.' });
       }
     } catch (err: any) {
-      setStatusMessage({ type: 'error', text: err.message || 'Withdrawal failed' });
+      setStatusMessage({ type: 'error', text: err.message || 'Cashout failed. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -337,9 +360,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-1.5">
                 <span>Checkers Arena Wallet</span>
               </h2>
-              <p className="text-xs text-amber-400 font-semibold flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                PesaJet Mobile Money • Instant MTN MoMo & Airtel Money
+              <p className="text-xs text-slate-400 font-medium">
+                Manage deposits, cashout winnings & transaction history
               </p>
             </div>
           </div>
@@ -445,7 +467,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               <span>Mobile Money USSD Prompt Sent</span>
             </div>
             <p className="text-[11px] text-amber-300/90">
-              Check your mobile phone screen ({phoneNumber}), enter your Mobile Money PIN to authorize the transaction of {effectiveDepositAmount.toLocaleString()} UGX.
+              Check your mobile phone screen ({effectivePhoneNumber}), enter your Mobile Money PIN to authorize the deposit of {effectiveDepositAmount.toLocaleString()} UGX.
             </p>
             <div className="flex items-center gap-2 pt-1">
               <button
@@ -477,28 +499,24 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </div>
         )}
 
-        {/* Tab 1: Deposit */}
+        {/* Tab 1: Deposit (Starts from 500 UGX, No 0, No Custom Amount, Profile Phone) */}
         {activeTab === 'deposit' && (
           <div id="deposit-tab-pane" className="space-y-3.5 overflow-y-auto custom-scrollbar flex-1 pr-1">
-            {/* Stake Amount Presets */}
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-300 flex items-center justify-between">
                 <span>Select Deposit Amount (UGX)</span>
-                <span className="text-[10px] text-amber-400 font-bold">Matches Match Stakes</span>
+                <span className="text-[10px] text-amber-400 font-bold">Starts from 500 UGX</span>
               </label>
 
               <div className="grid grid-cols-3 gap-2">
-                {STAKE_TIERS.map((tier) => (
+                {DEPOSIT_PRESET_AMOUNTS.map((tier) => (
                   <button
                     id={`btn-stake-preset-${tier.amount}`}
                     key={tier.amount}
                     type="button"
-                    onClick={() => {
-                      setDepositAmount(tier.amount);
-                      setCustomAmount('');
-                    }}
+                    onClick={() => setDepositAmount(tier.amount)}
                     className={`py-2 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center cursor-pointer ${
-                      effectiveDepositAmount === tier.amount && !customAmount
+                      depositAmount === tier.amount
                         ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow'
                         : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                     }`}
@@ -507,17 +525,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                     <span className="text-[9px] text-slate-500 font-semibold">{tier.category}</span>
                   </button>
                 ))}
-              </div>
-
-              <div className="pt-0.5">
-                <input
-                  id="input-custom-deposit-amount"
-                  type="number"
-                  placeholder="Or enter custom amount (e.g. 10000)"
-                  value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
-                />
               </div>
             </div>
 
@@ -554,26 +561,28 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               </div>
             </div>
 
-            {/* Phone Number Input */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1">
+            {/* Registered Phone Display (No manual phone input) */}
+            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
                   <Phone className="w-3.5 h-3.5 text-amber-400" />
-                  Mobile Money Phone Number (For PIN Prompt)
+                  Registered Mobile Money Phone
                 </span>
-                <span className="text-[10px] text-emerald-400 font-bold">MTN / Airtel</span>
-              </label>
-              <input
-                id="input-deposit-phone-number"
-                type="tel"
-                placeholder="e.g. 0771234567 or 0701234567"
-                value={phoneNumber}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
-              />
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                  {provider === 'mtn' ? 'MTN' : 'Airtel'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-white font-mono">
+                  {effectivePhoneNumber || 'No phone set (Add in Settings)'}
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Auto-linked from Profile
+                </span>
+              </div>
             </div>
 
-            {/* Initiate Button */}
+            {/* Deposit Button (Replaces "Prompt My Phone") */}
             <button
               id="btn-submit-deposit-prompt"
               onClick={handleInitiatePesaJetDeposit}
@@ -583,37 +592,60 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               {loading ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Connecting to PesaJet...</span>
+                  <span>Processing Deposit...</span>
                 </>
               ) : (
                 <>
                   <CreditCard className="w-4 h-4" />
-                  <span>Prompt My Phone ({effectiveDepositAmount.toLocaleString()} UGX)</span>
+                  <span>Deposit ({effectiveDepositAmount.toLocaleString()} UGX)</span>
                 </>
               )}
             </button>
           </div>
         )}
 
-        {/* Tab 2: Withdraw */}
+        {/* Tab 2: Cashout (Minimum 1,000 UGX, Profile Phone) */}
         {activeTab === 'withdraw' && (
           <div id="withdraw-tab-pane" className="space-y-3.5 overflow-y-auto custom-scrollbar flex-1 pr-1">
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-300">Amount to Cashout (UGX)</label>
-              <input
-                id="input-withdraw-amount"
-                type="number"
-                placeholder="Enter amount (min 500 UGX)"
-                value={effectiveDepositAmount}
-                onChange={(e) => {
-                  setDepositAmount(Number(e.target.value));
-                  setCustomAmount(e.target.value);
-                }}
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
-              />
-              <p className="text-[10px] text-slate-400">
-                Available: {(currentUser.walletBalance || 0).toLocaleString()} UGX
-              </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-300 flex items-center justify-between">
+                <span>Select Cashout Amount (UGX)</span>
+                <span className="text-[10px] text-amber-400 font-bold">Min 1,000 UGX</span>
+              </label>
+
+              <div className="grid grid-cols-3 gap-2">
+                {CASHOUT_PRESET_AMOUNTS.map((tier) => (
+                  <button
+                    key={tier.amount}
+                    type="button"
+                    onClick={() => {
+                      setWithdrawAmount(tier.amount);
+                      setCustomWithdraw('');
+                    }}
+                    className={`py-2 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center cursor-pointer ${
+                      effectiveWithdrawAmount === tier.amount && !customWithdraw
+                        ? 'bg-emerald-400/20 border-emerald-400 text-emerald-300 shadow'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <span>{tier.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-1">
+                <input
+                  id="input-withdraw-amount"
+                  type="number"
+                  placeholder="Or enter cashout amount (min 1,000 UGX)"
+                  value={customWithdraw}
+                  onChange={(e) => setCustomWithdraw(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Available balance: {(currentUser.walletBalance || 0).toLocaleString()} UGX
+                </p>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -648,26 +680,45 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-300">Mobile Money Number</label>
-              <input
-                id="input-withdraw-phone-number"
-                type="tel"
-                placeholder="e.g. 0771234567 or 0701234567"
-                value={phoneNumber}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
-              />
+            {/* Registered Phone Display */}
+            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-amber-400" />
+                  Payout Mobile Money Number
+                </span>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                  {provider === 'mtn' ? 'MTN' : 'Airtel'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-white font-mono">
+                  {effectivePhoneNumber || 'No phone registered (Set in Settings)'}
+                </span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Auto-linked from Profile
+                </span>
+              </div>
             </div>
 
+            {/* Cashout Button */}
             <button
               id="btn-submit-withdraw-cashout"
               onClick={handleWithdraw}
-              disabled={loading || (currentUser.walletBalance || 0) < 500 || !phoneNumber}
+              disabled={loading || (currentUser.walletBalance || 0) < 1000 || effectiveWithdrawAmount < 1000}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg transition active:scale-98 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
             >
-              <ArrowUpRight className="w-4 h-4" />
-              <span>Cashout Winnings (PesaJet Payout)</span>
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Processing Cashout...</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpRight className="w-4 h-4" />
+                  <span>Cashout ({effectiveWithdrawAmount.toLocaleString()} UGX)</span>
+                </>
+              )}
             </button>
           </div>
         )}
@@ -675,74 +726,81 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         {/* Tab 3: History */}
         {activeTab === 'history' && (
           <div id="history-tab-pane" className="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1">
-            <div className="flex items-center justify-between pb-1">
-              <span className="text-[11px] font-bold text-slate-400">Recent Transactions</span>
-              {(currentUser.walletBalance || 0) > 0 && (
-                <button
-                  id="btn-reset-history-balance"
-                  type="button"
-                  onClick={handleResetSandboxBalance}
-                  disabled={resettingBalance}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Reset All to 0 UGX</span>
-                </button>
-              )}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-300">Transaction History</span>
+              <button
+                id="btn-refresh-tx-history"
+                onClick={fetchTransactions}
+                className="text-[10px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className={`w-3 h-3 ${transactionsLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
             </div>
 
             {transactionsLoading ? (
-              <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
-                <span>Loading transaction records...</span>
+              <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                <span className="text-xs">Loading ledger transactions...</span>
               </div>
             ) : transactions.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500 space-y-1">
-                <History className="w-6 h-6 mx-auto text-slate-600" />
-                <p>No transactions yet.</p>
+              <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500 text-center">
+                <Info className="w-6 h-6 text-slate-600" />
+                <span className="text-xs font-semibold">No transactions recorded yet.</span>
               </div>
             ) : (
-              transactions.map((tx) => (
-                <div
-                  id={`tx-card-${tx.id}`}
-                  key={tx.id}
-                  className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs hover:border-slate-700 transition"
-                >
-                  <div className="space-y-0.5 min-w-0 pr-2">
-                    <div className="font-black text-slate-200 truncate">{tx.description}</div>
-                    <div className="text-[10px] text-slate-500">
-                      {new Date(tx.timestamp).toLocaleString()}
+              <div className="space-y-2">
+                {transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-white flex items-center gap-1.5">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            tx.type === 'deposit' || tx.type === 'win' || tx.type === 'bonus'
+                              ? 'bg-emerald-400'
+                              : 'bg-rose-400'
+                          }`}
+                        />
+                        <span className="capitalize">{tx.type}</span>
+                        <span className="text-[10px] text-slate-500">
+                          {new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 line-clamp-1">{tx.description}</p>
                     </div>
-                  </div>
 
-                  <div className="text-right shrink-0">
-                    <div
-                      className={`font-black ${
-                        tx.type === 'stake_win' || tx.type === 'deposit' || tx.type === 'stake_refund'
-                          ? 'text-emerald-400'
-                          : 'text-rose-400'
-                      }`}
-                    >
-                      {tx.type === 'stake_win' || tx.type === 'deposit' || tx.type === 'stake_refund'
-                        ? `+${tx.amount.toLocaleString()}`
-                        : `-${tx.amount.toLocaleString()}`}{' '}
-                      UGX
+                    <div className="text-right">
+                      <span
+                        className={`font-black font-mono ${
+                          tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {tx.amount >= 0 ? `+${tx.amount.toLocaleString()}` : tx.amount.toLocaleString()} UGX
+                      </span>
+                      <span className="text-[9px] text-slate-500 block uppercase font-bold">
+                        {tx.status}
+                      </span>
                     </div>
-                    <span
-                      className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
-                        tx.status === 'completed'
-                          ? 'bg-emerald-950 text-emerald-400'
-                          : tx.status === 'pending'
-                          ? 'bg-amber-950 text-amber-400'
-                          : 'bg-rose-950 text-rose-400'
-                      }`}
-                    >
-                      {tx.status}
-                    </span>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
+
+            {/* Clear Sandbox History */}
+            <div className="pt-3 border-t border-slate-800 flex justify-end">
+              <button
+                id="btn-clear-sandbox-balance"
+                onClick={handleResetSandboxBalance}
+                disabled={resettingBalance}
+                className="px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Reset Balance to 0 UGX</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
