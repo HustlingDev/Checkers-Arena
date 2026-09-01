@@ -1,0 +1,6 @@
+{
+  "name": "Checkers Online",
+  "description": "Multiplayer checkers arena with real-time matchmaking, device Google and phone authentication, custom themes, sound engine, and global leaderboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
