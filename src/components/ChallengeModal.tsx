@@ -86,35 +86,22 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
               <span>Select Match Stake</span>
             </label>
             {selectedStake > 0 && (
-              <span className="text-xs font-black text-emerald-400">
-                Winner Pot: {(selectedStake * 2).toLocaleString()} UGX
+              <span className="text-xs font-black text-amber-400">
+                Stake: {selectedStake.toLocaleString()} UGX
               </span>
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedStake(0)}
-              className={`py-2.5 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center ${
-                selectedStake === 0
-                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-              }`}
-            >
-              <span>Free Play</span>
-              <span className="text-[9px] text-slate-500">0 UGX</span>
-            </button>
-
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {STAKE_TIERS.map((tier) => (
               <button
-                key={tier.amount}
+                key={tier.id}
                 type="button"
                 onClick={() => setSelectedStake(tier.amount)}
-                className={`py-2.5 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center ${
+                className={`py-2 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center ${
                   selectedStake === tier.amount
                     ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow'
-                    : currentBalance < tier.amount
+                    : currentBalance < tier.amount && tier.amount > 0
                     ? 'bg-slate-950/60 border-slate-800/60 text-slate-500 opacity-80'
                     : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                 }`}

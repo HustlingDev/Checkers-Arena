@@ -52,6 +52,9 @@ export interface WalletTransaction {
   transactionReference?: string;
   pesajetTransactionId?: string;
   roomId?: string;
+  serviceFee?: number;
+  stakeAmount?: number;
+  metadata?: Record<string, any>;
   timestamp: number;
 }
 
@@ -61,10 +64,27 @@ export interface StakeTier {
   amount: number;
   label: string;
   badge: string;
-  pot: number;
   description: string;
   category?: string;
   isFree?: boolean;
+}
+
+export function getGameServiceFee(stakeAmount: number): number {
+  if (stakeAmount <= 0) return 0;
+  if (stakeAmount === 500) return 30;
+  if (stakeAmount === 1000) return 55;
+  if (stakeAmount === 2000) return 150;
+  if (stakeAmount === 5000) return 300;
+  if (stakeAmount === 10000) return 550;
+  if (stakeAmount === 20000) return 1000;
+  return Math.round(stakeAmount * 0.05);
+}
+
+export function getNetGameWinnings(stakeAmount: number): number {
+  if (stakeAmount <= 0) return 0;
+  const total = stakeAmount * 2;
+  const fee = getGameServiceFee(stakeAmount);
+  return Math.max(0, total - fee);
 }
 
 export const STAKE_TIERS: StakeTier[] = [
@@ -75,8 +95,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: 'Free (0 UGX)',
     badge: 'Free Mode',
     category: 'Free Play',
-    pot: 0,
-    description: 'Play for fun, ratings & practice with 0 cash required',
+    description: 'Play for ratings & practice with 0 cash required',
     isFree: true,
   },
   {
@@ -85,9 +104,8 @@ export const STAKE_TIERS: StakeTier[] = [
     amount: 500,
     label: '500 UGX',
     badge: '500 UGX',
-    category: 'Casual Stakes',
-    pot: 1000,
-    description: 'Entry: 500 UGX • Winner takes 1,000 UGX pot',
+    category: 'Welcome Stake',
+    description: 'Entry: 500 UGX match arena',
   },
   {
     id: '1000',
@@ -96,8 +114,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: '1,000 UGX',
     badge: '1,000 UGX',
     category: 'Casual Stakes',
-    pot: 2000,
-    description: 'Entry: 1,000 UGX • Winner takes 2,000 UGX pot',
+    description: 'Entry: 1,000 UGX match arena',
   },
   {
     id: '2000',
@@ -106,8 +123,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: '2,000 UGX',
     badge: '2,000 UGX',
     category: 'Popular Stakes',
-    pot: 4000,
-    description: 'Entry: 2,000 UGX • Winner takes 4,000 UGX pot',
+    description: 'Entry: 2,000 UGX match arena',
   },
   {
     id: '5000',
@@ -116,8 +132,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: '5,000 UGX',
     badge: '5,000 UGX',
     category: 'Popular Stakes',
-    pot: 10000,
-    description: 'Entry: 5,000 UGX • Winner takes 10,000 UGX pot',
+    description: 'Entry: 5,000 UGX match arena',
   },
   {
     id: '10000',
@@ -126,8 +141,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: '10,000 UGX',
     badge: '10,000 UGX',
     category: 'High Stakes',
-    pot: 20000,
-    description: 'Entry: 10,000 UGX • Winner takes 20,000 UGX pot',
+    description: 'Entry: 10,000 UGX match arena',
   },
   {
     id: '20000',
@@ -136,8 +150,7 @@ export const STAKE_TIERS: StakeTier[] = [
     label: '20,000 UGX',
     badge: '20,000 UGX',
     category: 'High Stakes',
-    pot: 40000,
-    description: 'Entry: 20,000 UGX • Winner takes 40,000 UGX pot',
+    description: 'Entry: 20,000 UGX match arena',
   },
 ];
 

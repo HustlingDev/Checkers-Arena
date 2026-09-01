@@ -1427,6 +1427,7 @@ export default function App() {
             onOpenLeaderboard={handleOpenLeaderboard}
             onOpenSettings={() => setIsSettingsModalOpen(true)}
             onOpenWallet={() => setIsWalletModalOpen(true)}
+            onNotify={(msg, type) => showNotification(msg, type || 'info', 6000)}
           />
         )}
       </main>

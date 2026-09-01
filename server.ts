@@ -117,7 +117,16 @@ function recordTransaction(
   type: WalletTransaction['type'],
   amount: number,
   description: string,
-  meta?: { reference?: string; transactionReference?: string; pesajetTransactionId?: string; roomId?: string; status?: WalletTransaction['status'] }
+  meta?: {
+    reference?: string;
+    transactionReference?: string;
+    pesajetTransactionId?: string;
+    roomId?: string;
+    serviceFee?: number;
+    stakeAmount?: number;
+    metadata?: Record<string, any>;
+    status?: WalletTransaction['status'];
+  }
 ): WalletTransaction {
   const tx: WalletTransaction = {
     id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -131,6 +140,9 @@ function recordTransaction(
     transactionReference: meta?.transactionReference,
     pesajetTransactionId: meta?.pesajetTransactionId,
     roomId: meta?.roomId,
+    serviceFee: meta?.serviceFee,
+    stakeAmount: meta?.stakeAmount,
+    metadata: meta?.metadata,
     timestamp: Date.now(),
   };
   transactionsList.unshift(tx);
@@ -143,7 +155,15 @@ function adjustUserWallet(
   delta: number,
   type: WalletTransaction['type'],
   description: string,
-  meta?: { reference?: string; transactionReference?: string; pesajetTransactionId?: string; roomId?: string }
+  meta?: {
+    reference?: string;
+    transactionReference?: string;
+    pesajetTransactionId?: string;
+    roomId?: string;
+    serviceFee?: number;
+    stakeAmount?: number;
+    metadata?: Record<string, any>;
+  }
 ): UserProfile | null {
   const user = usersMap.get(userId);
   if (!user) return null;
@@ -1554,6 +1574,18 @@ function executeBotTurn(room: GameRoom) {
   }
 }
 
+// Helper: Calculate Game Service Fee based on stake amount
+function getGameServiceFee(stakeAmount: number): number {
+  if (stakeAmount <= 0) return 0;
+  if (stakeAmount === 500) return 30;
+  if (stakeAmount === 1000) return 55;
+  if (stakeAmount === 2000) return 150;
+  if (stakeAmount === 5000) return 300;
+  if (stakeAmount === 10000) return 550;
+  if (stakeAmount === 20000) return 1000;
+  return Math.round(stakeAmount * 0.05);
+}
+
 // Helper: Handle game end statistics, pot distribution & Elo update
 function handleGameEnd(room: GameRoom) {
   if (room.redPlayer && !room.redPlayer.isBot) {
@@ -1576,24 +1608,27 @@ function handleGameEnd(room: GameRoom) {
     }
   }
 
-  // Handle Stake Pot Distribution
+  // Handle Stake Pot Distribution with Service Fee Deductions
   if (room.stakeAmount > 0) {
-    const totalPot = room.potAmount || room.stakeAmount * 2;
+    const serviceFee = getGameServiceFee(room.stakeAmount);
+    const totalCollected = room.stakeAmount * 2;
+    const netPayout = Math.max(0, totalCollected - serviceFee);
+
     if (room.winner === 'red' && room.redPlayer && !room.redPlayer.isBot) {
       adjustUserWallet(
         room.redPlayer.id,
-        totalPot,
+        netPayout,
         'stake_win',
-        `Victory Winnings! Pot for match ${room.name} (+${totalPot.toLocaleString()} UGX)`,
-        { roomId: room.id }
+        `Victory Winnings for ${room.name} (+${netPayout.toLocaleString()} UGX, Service Fee: ${serviceFee} UGX)`,
+        { roomId: room.id, serviceFee, stakeAmount: room.stakeAmount }
       );
     } else if (room.winner === 'black' && room.blackPlayer && !room.blackPlayer.isBot) {
       adjustUserWallet(
         room.blackPlayer.id,
-        totalPot,
+        netPayout,
         'stake_win',
-        `Victory Winnings! Pot for match ${room.name} (+${totalPot.toLocaleString()} UGX)`,
-        { roomId: room.id }
+        `Victory Winnings for ${room.name} (+${netPayout.toLocaleString()} UGX, Service Fee: ${serviceFee} UGX)`,
+        { roomId: room.id, serviceFee, stakeAmount: room.stakeAmount }
       );
     } else if (room.winner === 'draw' || !room.winner) {
       // Refund both players
