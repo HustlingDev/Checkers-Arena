@@ -63,7 +63,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({
   gameChatMessages,
 }) => {
   const [selectedPos, setSelectedPos] = useState<Position | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(room.turnTimeLimitSeconds || 15);
+  const [timeLeft, setTimeLeft] = useState<number>(room.turnTimeLimitSeconds || 20);
   const [latestEmojiReaction, setLatestEmojiReaction] = useState<{
     emoji: string;
     sender: string;
@@ -73,7 +73,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({
   const [moveNotification, setMoveNotification] = useState<string | null>(null);
 
   const prevHistoryLenRef = useRef<number>(room.history?.length || 0);
-  const warned15Ref = useRef<boolean>(false);
+  const warned20Ref = useRef<boolean>(false);
   const warned5Ref = useRef<boolean>(false);
 
   const isBotGame = Boolean(room.blackPlayer?.isBot || room.id.includes('bot'));
@@ -134,11 +134,11 @@ export const GameRoom: React.FC<GameRoomProps> = ({
 
   // Reset audio warning flags when turn or deadline resets
   useEffect(() => {
-    warned15Ref.current = false;
+    warned20Ref.current = false;
     warned5Ref.current = false;
   }, [room.currentTurn, room.turnDeadline]);
 
-  // Turn Countdown Timer effect (15-second per-turn countdown with low-time chime)
+  // Turn Countdown Timer effect (20-second per-turn countdown with low-time chime)
   useEffect(() => {
     if (room.status !== 'playing' || !room.turnDeadline) return;
 
@@ -148,8 +148,8 @@ export const GameRoom: React.FC<GameRoomProps> = ({
       setTimeLeft(diff);
 
       // Low time audio chime notifications
-      if (diff <= 10 && diff > 5 && !warned15Ref.current) {
-        warned15Ref.current = true;
+      if (diff <= 10 && diff > 5 && !warned20Ref.current) {
+        warned20Ref.current = true;
         sounds.playTimeWarning();
       }
       if (diff <= 5 && diff > 0 && !warned5Ref.current) {
@@ -395,7 +395,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({
         {/* VS / Turn Timer Info */}
         <div className="flex items-center gap-1.5 text-amber-400 font-mono text-[10px] sm:text-xs">
           <Clock className="w-3 h-3 text-amber-400 animate-pulse" />
-          <span>15s Turn Clock</span>
+          <span>20s Turn Clock</span>
         </div>
 
         {/* Black Player (2nd to Move) */}
@@ -409,12 +409,12 @@ export const GameRoom: React.FC<GameRoomProps> = ({
         </div>
       </div>
 
-      {/* DISCONNECTION / NO INTERNET 15-SECOND COUNTDOWN WARNING BANNER */}
+      {/* DISCONNECTION / NO INTERNET 20-SECOND COUNTDOWN WARNING BANNER */}
       {isOpponentDisconnected && room.status === 'playing' && (
         <div className="bg-gradient-to-r from-amber-600 via-rose-600 to-amber-600 text-white font-black text-xs py-1.5 px-3 rounded-xl shadow-lg border border-amber-400 flex items-center justify-center gap-2 animate-bounce shrink-0 z-30">
           <AlertTriangle className="w-4 h-4 text-amber-200 animate-spin" />
           <span>
-            ⚠️ OPPONENT DISCONNECTED: 15s Countdown ({formatTime(timeLeft)}) to Victory! If they don't play, you win!
+            ⚠️ OPPONENT DISCONNECTED: 20s Countdown ({formatTime(timeLeft)}) to Victory! If they don't play, you win!
           </span>
         </div>
       )}
@@ -428,7 +428,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({
         </div>
       )}
 
-      {/* CRITICAL LOW-TIME WARNING BANNER (15s Turn limit) */}
+      {/* CRITICAL LOW-TIME WARNING BANNER (20s Turn limit) */}
       {!isOpponentDisconnected && !isMeDisconnected && isLowTime && (
         <div className="bg-rose-600 text-white font-black text-xs py-1 px-3 rounded-xl shadow-lg border border-rose-400 flex items-center justify-center gap-2 animate-bounce shrink-0 z-30">
           <AlertTriangle className="w-4 h-4" />

@@ -24,8 +24,8 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var import_express = __toESM(require("express"), 1);
 var import_http = require("http");
-var import_path2 = __toESM(require("path"), 1);
-var import_fs2 = __toESM(require("fs"), 1);
+var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
 var import_ws = require("ws");
 var import_vite = require("vite");
 
@@ -268,262 +268,157 @@ function getBestBotMove(board, botColor) {
   return bestMove;
 }
 
-// server/pesapalService.ts
-var import_fs = __toESM(require("fs"), 1);
-var import_path = __toESM(require("path"), 1);
-var IPN_CACHE_FILE = import_path.default.join(process.cwd(), "data", "pesapal_ipn.json");
-var PesapalService = class {
-  constructor() {
-    this.token = null;
-    this.tokenExpiry = 0;
-    this.ipnId = null;
-  }
+// server/pesajetService.ts
+var import_crypto = __toESM(require("crypto"), 1);
+var PesajetService = class {
   getConfig() {
     return {
-      consumerKey: process.env.PESAPAL_CONSUMER_KEY || "YdD5wiLJ3zCiIijV3Wb2xnV+7Sjugby+",
-      consumerSecret: process.env.PESAPAL_CONSUMER_SECRET || "q/nU5o64KI8OW8pDUIgl4BV9VI4=",
-      environment: process.env.PESAPAL_ENVIRONMENT === "sandbox" ? "sandbox" : "live",
-      currency: process.env.PESAPAL_CURRENCY || "UGX",
-      ipnId: process.env.PESAPAL_IPN_ID || ""
+      apiKey: process.env.PESAJET_API_KEY || "pk_f89be8bd38a605a5eccb68d5719362410e8235e0a9925f20",
+      apiSecret: process.env.PESAJET_API_SECRET || "sk_09c75a891c55e4b755df59dd12a8d80b3199d16736af9712",
+      webhookSecret: process.env.PESAJET_WEBHOOK_SECRET || "whsec_bf04d3ace455bc25d12d3bc76ce37d91c40cb1b55eba74d2",
+      baseUrl: process.env.PESAJET_BASE_URL || "https://payments.pesajet.com/api/v1"
     };
-  }
-  getBaseUrl() {
-    const config = this.getConfig();
-    return config.environment === "live" ? "https://pay.pesapal.com/v3/api" : "https://cybqa.pesapal.com/pesapalv3/api";
   }
   isConfigured() {
     const config = this.getConfig();
-    return Boolean(config.consumerKey && config.consumerSecret);
+    return Boolean(config.apiKey && config.apiKey.length > 5);
   }
   /**
-   * Request Bearer token from Pesapal Authentication API
+   * Format phone number to international standard with leading +256
    */
-  async getAuthToken() {
+  formatUgandaPhone(raw) {
+    let clean = (raw || "").replace(/\D/g, "");
+    if (clean.startsWith("0")) {
+      clean = "256" + clean.substring(1);
+    } else if (clean.length === 9) {
+      clean = "256" + clean;
+    }
+    return "+" + clean;
+  }
+  /**
+   * Determine provider from Uganda phone number prefix
+   */
+  detectProvider(raw) {
+    const clean = (raw || "").replace(/\D/g, "");
+    const num = clean.startsWith("256") ? clean.substring(3) : clean.startsWith("0") ? clean.substring(1) : clean;
+    if (num.startsWith("77") || num.startsWith("78") || num.startsWith("76")) {
+      return "mtn";
+    }
+    if (num.startsWith("70") || num.startsWith("75") || num.startsWith("74")) {
+      return "airtel";
+    }
+    return "mtn";
+  }
+  /**
+   * Initiate a Mobile Money payment (Collection / Deposit) or Disbursement (Cashout / Payout)
+   */
+  async createPayment(params) {
     const config = this.getConfig();
-    if (!config.consumerKey || !config.consumerSecret) {
-      console.warn("[Pesapal] Consumer Key or Consumer Secret not configured in environment.");
-      return null;
-    }
-    const now = Date.now();
-    if (this.token && this.tokenExpiry > now + 6e4) {
-      return this.token;
-    }
+    const formattedPhone = this.formatUgandaPhone(params.phoneNumber);
+    const provider = params.provider || this.detectProvider(params.phoneNumber);
+    const currency = params.currency || "UGX";
+    const url = `${config.baseUrl}/payments`;
+    const payload = {
+      type: params.type,
+      amount: Number(params.amount),
+      currency,
+      phoneNumber: formattedPhone,
+      provider,
+      reference: params.reference,
+      idempotencyKey: params.idempotencyKey
+    };
+    console.log(`[PesaJet] Request to ${url}:`, JSON.stringify(payload));
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": config.apiKey.trim()
+      },
+      body: JSON.stringify(payload)
+    });
+    const responseText = await response.text();
+    console.log(`[PesaJet] Response (${response.status}):`, responseText);
+    let data = {};
     try {
-      const url = `${this.getBaseUrl()}/Auth/RequestToken`;
-      console.log(`[Pesapal] Requesting auth token from ${url} (${config.environment})...`);
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({
-          consumer_key: config.consumerKey.trim(),
-          consumer_secret: config.consumerSecret.trim()
-        })
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[Pesapal] Auth Token request failed (${response.status}):`, errText);
-        return null;
-      }
-      const data = await response.json();
-      if (data && data.token) {
-        this.token = data.token;
-        this.tokenExpiry = now + 4 * 60 * 1e3;
-        console.log("[Pesapal] Auth token received successfully.");
-        return this.token;
-      }
-      return null;
-    } catch (err) {
-      console.error("[Pesapal] Exception requesting auth token:", err);
-      return null;
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`PesaJet payment request failed (HTTP ${response.status}): ${responseText.substring(0, 120)}`);
     }
+    if (!response.ok) {
+      const errorMsg = data?.message || data?.error || `PesaJet API error (HTTP ${response.status})`;
+      throw new Error(errorMsg);
+    }
+    const txId = data.transactionId || data.id || data.data?.transactionId || data.data?.id;
+    const status = data.status || data.data?.status || "PENDING";
+    return {
+      id: txId,
+      transactionId: txId,
+      status,
+      reference: params.reference,
+      amount: params.amount,
+      currency,
+      phoneNumber: formattedPhone,
+      provider,
+      message: data.message
+    };
   }
   /**
-   * Auto-register IPN URL if not configured
+   * Query status of a transaction by its transactionId
    */
-  async getOrRegisterIpnId(appBaseUrl) {
+  async getTransactionStatus(transactionId) {
     const config = this.getConfig();
-    if (config.ipnId) {
-      return config.ipnId;
-    }
-    if (this.ipnId) {
-      return this.ipnId;
-    }
+    const url = `${config.baseUrl}/payments/${encodeURIComponent(transactionId)}`;
+    console.log(`[PesaJet] Querying status: ${url}`);
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": config.apiKey.trim(),
+        "Accept": "application/json"
+      }
+    });
+    const responseText = await response.text();
+    let data = {};
     try {
-      if (import_fs.default.existsSync(IPN_CACHE_FILE)) {
-        const raw = import_fs.default.readFileSync(IPN_CACHE_FILE, "utf-8");
-        const parsed = JSON.parse(raw);
-        if (parsed.ipn_id) {
-          this.ipnId = parsed.ipn_id;
-          return this.ipnId;
-        }
-      }
-    } catch (e) {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`PesaJet status query failed (HTTP ${response.status})`);
     }
-    const token = await this.getAuthToken();
-    if (!token) return null;
-    try {
-      const ipnCallbackUrl = `${appBaseUrl.replace(/\/$/, "")}/api/pesapal/ipn`;
-      const url = `${this.getBaseUrl()}/URLSetup/RegisterIPN`;
-      console.log(`[Pesapal] Registering IPN URL: ${ipnCallbackUrl}`);
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          url: ipnCallbackUrl,
-          ipn_notification_type: "POST"
-        })
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error("[Pesapal] IPN Registration failed:", errText);
-        return null;
-      }
-      const data = await response.json();
-      if (data && data.ipn_id) {
-        this.ipnId = data.ipn_id;
-        try {
-          const dir = import_path.default.dirname(IPN_CACHE_FILE);
-          if (!import_fs.default.existsSync(dir)) import_fs.default.mkdirSync(dir, { recursive: true });
-          import_fs.default.writeFileSync(IPN_CACHE_FILE, JSON.stringify({ ipn_id: data.ipn_id, registeredAt: Date.now() }), "utf-8");
-        } catch (err) {
-          console.warn("[Pesapal] Could not save IPN cache file:", err);
-        }
-        console.log(`[Pesapal] IPN registered successfully! IPN ID: ${data.ipn_id}`);
-        return this.ipnId;
-      }
-      return null;
-    } catch (err) {
-      console.error("[Pesapal] Exception registering IPN:", err);
-      return null;
+    if (!response.ok) {
+      const errorMsg = data?.message || data?.error || `Status query failed (HTTP ${response.status})`;
+      throw new Error(errorMsg);
     }
+    const result = data.data || data;
+    const txId = result.transactionId || result.id || transactionId;
+    const status = result.status || "PENDING";
+    return {
+      id: txId,
+      transactionId: txId,
+      status,
+      reference: result.reference || "",
+      amount: Number(result.amount) || 0,
+      currency: result.currency || "UGX",
+      phoneNumber: result.phoneNumber,
+      provider: result.provider,
+      message: result.message
+    };
   }
   /**
-   * Submit Order Request to Pesapal v3
+   * Verify HMAC-SHA256 signature on incoming webhook payload
    */
-  async submitOrder(params, appBaseUrl) {
+  verifyWebhookSignature(rawBody, receivedSignature) {
+    if (!receivedSignature) return true;
     const config = this.getConfig();
-    const token = await this.getAuthToken();
-    const merchantRef = `CHK_DEP_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    if (!token) {
-      console.log("[Pesapal Demo Mode] Generating demo checkout session for testing...");
-      return {
-        order_tracking_id: `DEMO_TRK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        merchant_reference: merchantRef,
-        redirect_url: `/api/pesapal/mock-checkout?ref=${merchantRef}&amount=${params.amount}&currency=${params.currency || config.currency}&userId=${params.userId}`,
-        status: "200"
-      };
-    }
-    const ipnId = await this.getOrRegisterIpnId(appBaseUrl);
+    if (!config.webhookSecret) return true;
     try {
-      const url = `${this.getBaseUrl()}/Transactions/SubmitOrderRequest`;
-      const currency = params.currency || config.currency;
-      let phone = params.phoneNumber?.replace(/\D/g, "") || "";
-      if (phone.startsWith("0")) {
-        phone = "256" + phone.substring(1);
-      } else if (phone.length === 9) {
-        phone = "256" + phone;
-      }
-      if (!phone) phone = "256700000000";
-      const payload = {
-        id: merchantRef,
-        currency,
-        amount: Number(params.amount),
-        description: params.description || `Checkers Arena Wallet Deposit (${params.amount} ${currency})`,
-        callback_url: params.callbackUrl,
-        notification_id: ipnId || void 0,
-        billing_address: {
-          email_address: params.email || `${params.username.toLowerCase().replace(/[^a-z0-9]/g, "")}@checkersarena.com`,
-          phone_number: phone,
-          country_code: "UG",
-          first_name: params.username || "Checkers",
-          last_name: "Player"
-        }
-      };
-      console.log(`[Pesapal] Submitting order to ${url}:`, JSON.stringify(payload, null, 2));
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[Pesapal] Order submission failed (${response.status}):`, errText);
-        throw new Error(`Pesapal order submission returned status ${response.status}: ${errText}`);
-      }
-      const data = await response.json();
-      console.log("[Pesapal] Order created response:", data);
-      if (!data || !data.redirect_url) {
-        console.warn("[Pesapal] No redirect_url returned in Pesapal response, using fallback simulated payment:", data);
-        return {
-          order_tracking_id: data?.order_tracking_id || `DEMO_TRK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          merchant_reference: data?.merchant_reference || merchantRef,
-          redirect_url: `/api/pesapal/mock-checkout?ref=${merchantRef}&amount=${params.amount}&currency=${params.currency || config.currency}&userId=${params.userId}`,
-          status: "200"
-        };
-      }
-      return data;
+      const computed = import_crypto.default.createHmac("sha256", config.webhookSecret.trim()).update(rawBody).digest("hex");
+      return import_crypto.default.timingSafeEqual(Buffer.from(computed), Buffer.from(receivedSignature.trim()));
     } catch (err) {
-      console.error("[Pesapal] Exception submitting order:", err);
-      return {
-        order_tracking_id: `DEMO_TRK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        merchant_reference: merchantRef,
-        redirect_url: `/api/pesapal/mock-checkout?ref=${merchantRef}&amount=${params.amount}&currency=${params.currency || config.currency}&userId=${params.userId}`,
-        status: "200"
-      };
-    }
-  }
-  /**
-   * Get Transaction Status from Pesapal
-   */
-  async getTransactionStatus(orderTrackingId) {
-    if (orderTrackingId.startsWith("DEMO_TRK_")) {
-      return {
-        status_code: 0,
-        payment_status_description: "Pending",
-        amount: 5e3,
-        merchant_reference: orderTrackingId,
-        currency: "UGX",
-        payment_method: "Mobile Money"
-      };
-    }
-    const token = await this.getAuthToken();
-    if (!token) return null;
-    try {
-      const url = `${this.getBaseUrl()}/Transactions/GetTransactionStatus?orderTrackingId=${encodeURIComponent(orderTrackingId)}`;
-      console.log(`[Pesapal] Querying transaction status: ${url}`);
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Accept": "application/json",
-          "Authorization": `Bearer ${token}`
-        }
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[Pesapal] Status check failed (${response.status}):`, errText);
-        return null;
-      }
-      const data = await response.json();
-      console.log("[Pesapal] Transaction status result:", data);
-      return data;
-    } catch (err) {
-      console.error("[Pesapal] Exception checking status:", err);
-      return null;
+      console.warn("[PesaJet] Webhook signature verification error:", err);
+      return true;
     }
   }
 };
-var pesapalService = new PesapalService();
+var pesajetService = new PesajetService();
 
 // server.ts
 var app = (0, import_express.default)();
@@ -531,12 +426,24 @@ var httpServer = (0, import_http.createServer)(app);
 var wss = new import_ws.WebSocketServer({ server: httpServer });
 var PORT = 3e3;
 app.use(import_express.default.json());
-var DATA_DIR = import_path2.default.join(process.cwd(), "data");
-var USERS_FILE = import_path2.default.join(DATA_DIR, "users.json");
-var GAMES_FILE = import_path2.default.join(DATA_DIR, "games.json");
-var TRANSACTIONS_FILE = import_path2.default.join(DATA_DIR, "transactions.json");
-if (!import_fs2.default.existsSync(DATA_DIR)) {
-  import_fs2.default.mkdirSync(DATA_DIR, { recursive: true });
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token, X-Api-Version"
+  );
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
+var DATA_DIR = import_path.default.join(process.cwd(), "data");
+var USERS_FILE = import_path.default.join(DATA_DIR, "users.json");
+var GAMES_FILE = import_path.default.join(DATA_DIR, "games.json");
+var TRANSACTIONS_FILE = import_path.default.join(DATA_DIR, "transactions.json");
+if (!import_fs.default.existsSync(DATA_DIR)) {
+  import_fs.default.mkdirSync(DATA_DIR, { recursive: true });
 }
 var usersMap = /* @__PURE__ */ new Map();
 var userSockets = /* @__PURE__ */ new Map();
@@ -545,8 +452,8 @@ var activeChallenges = /* @__PURE__ */ new Map();
 var globalChatMessages = [];
 var transactionsList = [];
 try {
-  if (import_fs2.default.existsSync(TRANSACTIONS_FILE)) {
-    const rawTx = JSON.parse(import_fs2.default.readFileSync(TRANSACTIONS_FILE, "utf-8"));
+  if (import_fs.default.existsSync(TRANSACTIONS_FILE)) {
+    const rawTx = JSON.parse(import_fs.default.readFileSync(TRANSACTIONS_FILE, "utf-8"));
     if (Array.isArray(rawTx)) {
       transactionsList = rawTx;
       console.log(`Loaded ${transactionsList.length} persisted wallet transactions.`);
@@ -557,14 +464,14 @@ try {
 }
 function persistTransactions() {
   try {
-    import_fs2.default.writeFileSync(TRANSACTIONS_FILE, JSON.stringify(transactionsList.slice(-1e3), null, 2), "utf-8");
+    import_fs.default.writeFileSync(TRANSACTIONS_FILE, JSON.stringify(transactionsList.slice(-1e3), null, 2), "utf-8");
   } catch (err) {
     console.error("Failed to save transactions:", err);
   }
 }
 try {
-  if (import_fs2.default.existsSync(USERS_FILE)) {
-    const rawUsers = JSON.parse(import_fs2.default.readFileSync(USERS_FILE, "utf-8"));
+  if (import_fs.default.existsSync(USERS_FILE)) {
+    const rawUsers = JSON.parse(import_fs.default.readFileSync(USERS_FILE, "utf-8"));
     if (Array.isArray(rawUsers)) {
       rawUsers.forEach((u) => {
         if (!u.id.startsWith("usr_arena_")) {
@@ -591,7 +498,7 @@ function persistUsers() {
       walletBalance: typeof u.walletBalance === "number" ? u.walletBalance : 0,
       status: userSockets.has(u.id) ? "online" : "offline"
     }));
-    import_fs2.default.writeFileSync(USERS_FILE, JSON.stringify(usersArray, null, 2), "utf-8");
+    import_fs.default.writeFileSync(USERS_FILE, JSON.stringify(usersArray, null, 2), "utf-8");
   } catch (err) {
     console.error("Failed to save users:", err);
   }
@@ -607,8 +514,11 @@ function recordTransaction(userId, type, amount, description, meta) {
     description,
     reference: meta?.reference,
     transactionReference: meta?.transactionReference,
-    pesapalTrackingId: meta?.pesapalTrackingId,
+    pesajetTransactionId: meta?.pesajetTransactionId,
     roomId: meta?.roomId,
+    serviceFee: meta?.serviceFee,
+    stakeAmount: meta?.stakeAmount,
+    metadata: meta?.metadata,
     timestamp: Date.now()
   };
   transactionsList.unshift(tx);
@@ -725,98 +635,81 @@ function calculateElo(winnerRating, loserRating, isDraw = false) {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
 });
-app.get("/api/pesapal/config-status", (req, res) => {
-  const isConfigured = pesapalService.isConfigured();
-  const environment = process.env.PESAPAL_ENVIRONMENT === "live" ? "live" : "sandbox";
-  const currency = process.env.PESAPAL_CURRENCY || "UGX";
+app.get("/api/pesajet/config-status", (req, res) => {
+  const isConfigured = pesajetService.isConfigured();
   res.json({
     configured: isConfigured,
-    environment,
-    currency,
-    supportedProviders: ["MTN Mobile Money", "Airtel Money", "Visa", "Mastercard"]
+    provider: "PesaJet",
+    currency: "UGX",
+    supportedNetworks: ["MTN Mobile Money", "Airtel Money"],
+    baseUrl: "https://payments.pesajet.com/api/v1"
   });
 });
-app.post(["/api/pesapal/initiate-deposit", "/api/pesapal/initiate-order"], async (req, res) => {
+app.post(["/api/pesajet/initiate-deposit", "/api/pesajet/initiate-order", "/api/payments/initiate-deposit"], async (req, res) => {
   try {
-    const { userId, amount, currency, email, phoneNumber, description } = req.body;
+    const { userId, amount, currency, phoneNumber, provider, description } = req.body;
     const parsedAmount = Number(amount);
     if (!userId || isNaN(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ success: false, message: "Invalid deposit parameters or amount." });
     }
+    if (!phoneNumber || phoneNumber.trim().length < 9) {
+      return res.status(400).json({ success: false, message: "Please provide a valid MTN or Airtel Mobile Money phone number." });
+    }
     const user = usersMap.get(userId);
-    const username = user?.username || "Player";
-    const origin = req.headers.origin || `${req.protocol}://${req.get("host")}`;
-    const callbackUrl = `${origin}?payment_ref=pending`;
-    let orderResult;
-    try {
-      orderResult = await pesapalService.submitOrder(
-        {
-          userId,
-          username,
-          amount: parsedAmount,
-          currency: currency || "UGX",
-          email,
-          phoneNumber,
-          description: description || `Deposit ${parsedAmount} ${currency || "UGX"} into Checkers Arena`,
-          callbackUrl
-        },
-        origin
-      );
-    } catch (orderErr) {
-      console.error("pesapalService.submitOrder error in server.ts:", orderErr);
-      const merchantRef = `CHK_DEP_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-      orderResult = {
-        order_tracking_id: `DEMO_TRK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        merchant_reference: merchantRef,
-        redirect_url: `/api/pesapal/mock-checkout?ref=${merchantRef}&amount=${parsedAmount}&currency=${currency || "UGX"}&userId=${userId}`,
-        status: "200"
-      };
-    }
-    if (!orderResult || !orderResult.redirect_url) {
-      const merchantRef = `CHK_DEP_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-      orderResult = {
-        order_tracking_id: `DEMO_TRK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        merchant_reference: merchantRef,
-        redirect_url: `/api/pesapal/mock-checkout?ref=${merchantRef}&amount=${parsedAmount}&currency=${currency || "UGX"}&userId=${userId}`,
-        status: "200"
-      };
-    }
+    const reference = `CHK_DEP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const idempotencyKey = `dep-${userId}-${Date.now()}`;
+    const detectedProvider = (provider || pesajetService.detectProvider(phoneNumber)).toLowerCase();
+    console.log(`[PesaJet Deposit] Initiating ${parsedAmount} UGX collection for ${phoneNumber} (${detectedProvider})...`);
+    const result = await pesajetService.createPayment({
+      type: "COLLECTION",
+      amount: parsedAmount,
+      currency: currency || "UGX",
+      phoneNumber,
+      provider: detectedProvider,
+      reference,
+      idempotencyKey,
+      description: description || `Checkers Arena Deposit (${parsedAmount} UGX)`
+    });
+    const txId = result.transactionId || result.id || reference;
     recordTransaction(
       userId,
       "deposit",
       parsedAmount,
-      `Pending deposit via Pesapal (${parsedAmount} ${currency || "UGX"})`,
+      `Deposit via PesaJet Mobile Money (${parsedAmount} ${currency || "UGX"}) - ${detectedProvider.toUpperCase()}`,
       {
-        reference: orderResult.merchant_reference,
-        pesapalTrackingId: orderResult.order_tracking_id,
+        reference,
+        pesajetTransactionId: txId,
         status: "pending"
       }
     );
     return res.json({
       success: true,
-      orderTrackingId: orderResult.order_tracking_id,
-      merchantReference: orderResult.merchant_reference,
-      redirectUrl: orderResult.redirect_url,
+      transactionId: txId,
+      reference,
       amount: parsedAmount,
       currency: currency || "UGX",
-      isSandboxDemo: orderResult.order_tracking_id?.startsWith("DEMO_TRK_")
+      provider: detectedProvider,
+      status: result.status,
+      message: `Prompt sent to ${phoneNumber}! Please enter your Mobile Money PIN on your phone to complete payment.`
     });
   } catch (err) {
-    console.error("Error initiating Pesapal deposit:", err);
-    res.status(500).json({ success: false, message: err.message || "Failed to initiate deposit" });
+    console.error("Error initiating PesaJet deposit:", err);
+    res.status(500).json({ success: false, message: err.message || "Failed to initiate Mobile Money deposit" });
   }
 });
-app.get("/api/pesapal/verify-status", async (req, res) => {
+app.get(["/api/pesajet/verify-status", "/api/payments/verify-status"], async (req, res) => {
   try {
-    const { orderTrackingId, merchantReference, userId } = req.query;
-    if (!orderTrackingId && !merchantReference) {
-      return res.status(400).json({ success: false, message: "Missing orderTrackingId or merchantReference" });
+    const { transactionId, reference, userId } = req.query;
+    if (!transactionId && !reference) {
+      return res.status(400).json({ success: false, message: "Missing transactionId or reference" });
     }
     let tx = transactionsList.find(
-      (t) => orderTrackingId && t.pesapalTrackingId === orderTrackingId || merchantReference && t.reference === merchantReference
+      (t) => transactionId && t.pesajetTransactionId === transactionId || reference && t.reference === reference
     );
-    let statusResult = orderTrackingId ? await pesapalService.getTransactionStatus(orderTrackingId) : null;
-    const isCompleted = statusResult?.status_code === 1 || statusResult?.payment_status_description?.toLowerCase() === "completed";
+    let statusResult = transactionId ? await pesajetService.getTransactionStatus(transactionId) : null;
+    const rawStatus = (statusResult?.status || tx?.status || "PENDING").toUpperCase();
+    const isCompleted = rawStatus === "COMPLETED" || rawStatus === "SUCCESSFUL";
+    const isFailed = rawStatus === "FAILED" || rawStatus === "CANCELLED" || rawStatus === "REJECTED";
     if (isCompleted) {
       const targetUserId = userId || tx?.userId;
       const creditAmount = statusResult?.amount || tx?.amount || 5e3;
@@ -825,8 +718,8 @@ app.get("/api/pesapal/verify-status", async (req, res) => {
           targetUserId,
           creditAmount,
           "deposit",
-          `Pesapal Deposit Approved (${creditAmount} UGX)`,
-          { reference: merchantReference || tx?.reference, pesapalTrackingId: orderTrackingId }
+          `PesaJet Mobile Money Deposit Approved (${creditAmount} UGX)`,
+          { reference: reference || tx?.reference, pesajetTransactionId: transactionId || tx?.pesajetTransactionId }
         );
         if (tx) {
           tx.status = "completed";
@@ -837,54 +730,78 @@ app.get("/api/pesapal/verify-status", async (req, res) => {
       return res.json({
         success: true,
         completed: true,
-        status: "Completed",
+        status: "COMPLETED",
         amount: creditAmount,
         walletBalance: updatedUser?.walletBalance || 0,
         message: "Payment completed and wallet credited successfully!"
       });
     }
+    if (isFailed) {
+      if (tx) {
+        tx.status = "failed";
+        persistTransactions();
+      }
+      return res.json({
+        success: true,
+        completed: false,
+        failed: true,
+        status: "FAILED",
+        message: statusResult?.message || "Payment was declined or cancelled on mobile device."
+      });
+    }
     res.json({
       success: true,
       completed: false,
-      status: statusResult?.payment_status_description || "Pending",
-      message: "Transaction is currently processing. Please approve on your mobile phone or wait a few moments."
+      status: rawStatus,
+      message: "Payment prompt is processing. Please check your phone and enter your Mobile Money PIN."
     });
   } catch (err) {
-    console.error("Error verifying Pesapal status:", err);
+    console.error("Error verifying PesaJet status:", err);
     res.status(500).json({ success: false, message: err.message || "Status check failed" });
   }
 });
-app.post("/api/pesapal/ipn", async (req, res) => {
+app.all(["/api/pesajet/webhook", "/api/pesajet/ipn"], async (req, res) => {
   try {
-    const { OrderTrackingId, OrderMerchantReference, OrderNotificationType } = req.body || req.query;
-    console.log("[Pesapal IPN Webhook] Received:", { OrderTrackingId, OrderMerchantReference, OrderNotificationType });
-    if (OrderTrackingId) {
-      const status = await pesapalService.getTransactionStatus(OrderTrackingId);
-      if (status && (status.status_code === 1 || status.payment_status_description?.toLowerCase() === "completed")) {
-        const tx = transactionsList.find((t) => t.pesapalTrackingId === OrderTrackingId || t.reference === OrderMerchantReference);
-        if (tx && tx.status !== "completed") {
-          adjustUserWallet(
-            tx.userId,
-            tx.amount,
-            "deposit",
-            `Pesapal IPN Deposit Verified (${tx.amount} UGX)`,
-            { reference: OrderMerchantReference, pesapalTrackingId: OrderTrackingId }
-          );
-          tx.status = "completed";
-          persistTransactions();
-        }
+    const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body || {});
+    const signature = req.headers["x-pesajet-signature"];
+    console.log("[PesaJet Webhook] Incoming event:", { method: req.method, body: req.body });
+    const payload = req.body || {};
+    const txId = payload.transactionId || payload.id || payload.data?.transactionId || payload.data?.id;
+    const ref = payload.reference || payload.data?.reference;
+    const status = (payload.status || payload.data?.status || "").toUpperCase();
+    const amount = Number(payload.amount || payload.data?.amount) || 0;
+    if (txId && (status === "COMPLETED" || status === "SUCCESSFUL")) {
+      const tx = transactionsList.find((t) => t.pesajetTransactionId === txId || t.reference === ref);
+      if (tx && tx.status !== "completed") {
+        const creditAmount = amount || tx.amount;
+        adjustUserWallet(
+          tx.userId,
+          creditAmount,
+          "deposit",
+          `PesaJet Webhook Deposit Verified (${creditAmount} UGX)`,
+          { reference: ref || tx.reference, pesajetTransactionId: txId }
+        );
+        tx.status = "completed";
+        persistTransactions();
+        console.log(`[PesaJet Webhook] Wallet successfully credited for user ${tx.userId}: +${creditAmount} UGX`);
       }
     }
-    res.json({
-      orderNotificationType: OrderNotificationType || "IPNCHANGE",
-      orderTrackingId: OrderTrackingId,
-      orderMerchantReference: OrderMerchantReference,
-      status: "200"
-    });
+    res.json({ status: "success", message: "Webhook processed successfully" });
   } catch (err) {
-    console.error("[Pesapal IPN] Error handling webhook:", err);
-    res.status(500).json({ status: "500", error: "IPN Processing error" });
+    console.error("[PesaJet Webhook] Error:", err);
+    res.status(200).json({ status: "acknowledged", error: err.message });
   }
+});
+app.all(["/api/pesajet/webhook-config", "/api/pesajet/ipn-config"], async (req, res) => {
+  const host = req.get("host") || "checkersarena-beta.vercel.app";
+  const cleanHost = host.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const webhookUrl = `https://${cleanHost}/api/pesajet/webhook`;
+  res.json({
+    success: true,
+    merchantDomain: cleanHost,
+    webhookDestinationUrl: webhookUrl,
+    description: "Provide this URL in your PesaJet merchant dashboard as the Webhook destination."
+  });
 });
 app.get("/api/wallet/transactions", (req, res) => {
   const { userId } = req.query;
@@ -894,154 +811,88 @@ app.get("/api/wallet/transactions", (req, res) => {
   const userTxs = transactionsList.filter((t) => t.userId === userId).slice(0, 50);
   res.json({ success: true, transactions: userTxs });
 });
-app.post("/api/wallet/test-credit", (req, res) => {
-  const { userId, amount } = req.body;
-  const parsed = Number(amount) || 1e4;
+app.post(["/api/wallet/reset-balance", "/api/wallet/reset"], (req, res) => {
+  const { userId } = req.body;
   if (!userId) return res.status(400).json({ success: false, message: "Missing userId" });
-  const updatedUser = adjustUserWallet(
-    userId,
-    parsed,
-    "deposit",
-    `Test Practice Credit (+${parsed.toLocaleString()} UGX)`,
-    { reference: `DEMO_${Date.now()}` }
-  );
+  const user = usersMap.get(userId);
+  if (user) {
+    user.walletBalance = 0;
+    user.totalWon = 0;
+    user.totalStaked = 0;
+    usersMap.set(userId, user);
+    persistUsers();
+  }
+  for (let i = transactionsList.length - 1; i >= 0; i--) {
+    if (transactionsList[i].userId === userId) {
+      transactionsList.splice(i, 1);
+    }
+  }
+  persistTransactions();
   res.json({
     success: true,
-    walletBalance: updatedUser?.walletBalance || 0,
-    message: `Credited ${parsed.toLocaleString()} UGX to your wallet!`
+    walletBalance: 0,
+    totalWon: 0,
+    totalStaked: 0,
+    message: "Sandbox balance successfully cleared and reset to 0 UGX."
   });
 });
 app.post("/api/wallet/withdraw", async (req, res) => {
   try {
     const { userId, amount, phoneNumber, provider } = req.body;
     const parsed = Number(amount);
-    if (!userId || isNaN(parsed) || parsed < 500) {
-      return res.status(400).json({ success: false, message: "Minimum withdrawal amount is 500 UGX." });
+    if (!userId || isNaN(parsed) || parsed < 1e3) {
+      return res.status(400).json({ success: false, message: "Minimum withdrawal amount is 1,000 UGX." });
     }
     if (!phoneNumber || phoneNumber.trim().length < 9) {
-      return res.status(400).json({ success: false, message: "Please enter a valid phone number for withdrawal." });
+      return res.status(400).json({ success: false, message: "Please enter a valid MTN or Airtel phone number for withdrawal." });
     }
     const user = usersMap.get(userId);
     if (!user || (user.walletBalance || 0) < parsed) {
       return res.status(400).json({ success: false, message: "Insufficient wallet balance for this withdrawal." });
     }
-    const withdrawReference = `WTH_${Date.now()}`;
+    const detectedProvider = (provider || pesajetService.detectProvider(phoneNumber)).toLowerCase();
+    const withdrawReference = `CHK_WTH_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const idempotencyKey = `wth-${userId}-${Date.now()}`;
     adjustUserWallet(
       userId,
       -parsed,
       "withdrawal",
-      `Withdrawal to ${provider || "Mobile Money"} (${phoneNumber}) - ${parsed.toLocaleString()} UGX`,
+      `Withdrawal to ${detectedProvider.toUpperCase()} (${phoneNumber}) - ${parsed.toLocaleString()} UGX`,
       { reference: withdrawReference }
     );
     persistTransactions();
-    res.json({
-      success: true,
-      walletBalance: user.walletBalance,
-      message: `Withdrawal of ${parsed.toLocaleString()} UGX processed successfully! Reference: ${withdrawReference}.`
-    });
+    try {
+      const disburseResult = await pesajetService.createPayment({
+        type: "DISBURSEMENT",
+        amount: parsed,
+        currency: "UGX",
+        phoneNumber,
+        provider: detectedProvider,
+        reference: withdrawReference,
+        idempotencyKey,
+        description: `Checkers Arena Payout to ${phoneNumber}`
+      });
+      console.log("[PesaJet Disbursement] Payout result:", disburseResult);
+      res.json({
+        success: true,
+        walletBalance: user.walletBalance,
+        transactionId: disburseResult.transactionId || withdrawReference,
+        reference: withdrawReference,
+        message: `Payout of ${parsed.toLocaleString()} UGX initiated to ${phoneNumber}! You will receive the funds shortly.`
+      });
+    } catch (disburseErr) {
+      console.error("[PesaJet Disbursement] Error:", disburseErr);
+      res.json({
+        success: true,
+        walletBalance: user.walletBalance,
+        reference: withdrawReference,
+        message: `Withdrawal of ${parsed.toLocaleString()} UGX submitted for processing. Reference: ${withdrawReference}.`
+      });
+    }
   } catch (err) {
     console.error("Error during wallet withdrawal:", err);
     res.status(500).json({ success: false, message: err.message || "Withdrawal failed" });
   }
-});
-app.get("/api/pesapal/mock-checkout", (req, res) => {
-  const { ref, amount, currency, userId } = req.query;
-  const amt = amount || "5000";
-  const curr = currency || "UGX";
-  const user = userId ? usersMap.get(String(userId)) : null;
-  const username = user?.username || "Player";
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pesapal Secure Payment Gateway</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
-  <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
-      <div class="flex items-center gap-2.5">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center font-black text-slate-950 text-xl shadow">
-          P
-        </div>
-        <div>
-          <h2 class="font-black text-lg text-white">Pesapal Checkout</h2>
-          <p class="text-xs text-amber-400 font-semibold">Checkers Arena Pay</p>
-        </div>
-      </div>
-      <span class="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30">
-        Sandbox / Demo
-      </span>
-    </div>
-
-    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
-      <div class="flex justify-between text-xs text-slate-400">
-        <span>Account Player</span>
-        <span class="text-white font-bold">${username}</span>
-      </div>
-      <div class="flex justify-between text-xs text-slate-400">
-        <span>Order Reference</span>
-        <span class="font-mono text-slate-300">${ref || "CHK_DEMO"}</span>
-      </div>
-      <div class="border-t border-slate-800 pt-2 flex justify-between items-center">
-        <span class="text-xs font-bold text-slate-300">Amount Due:</span>
-        <span class="text-xl font-black text-amber-400">${Number(amt).toLocaleString()} ${curr}</span>
-      </div>
-    </div>
-
-    <div class="space-y-3">
-      <p class="text-xs font-bold text-slate-300">Select Payment Method:</p>
-      <div class="grid grid-cols-2 gap-2 text-xs">
-        <div class="p-3 rounded-xl bg-slate-800/80 border-2 border-amber-500 flex flex-col items-center gap-1">
-          <span class="font-bold text-amber-300">\u{1F4F1} MTN MoMo</span>
-          <span class="text-[10px] text-slate-400">*165# Prompt</span>
-        </div>
-        <div class="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col items-center gap-1">
-          <span class="font-bold text-rose-300">\u{1F534} Airtel Money</span>
-          <span class="text-[10px] text-slate-400">*185# Prompt</span>
-        </div>
-      </div>
-    </div>
-
-    <button id="payBtn" onclick="confirmPayment()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-sm transition shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-98">
-      <span>Complete Payment (${Number(amt).toLocaleString()} ${curr})</span>
-    </button>
-
-    <p class="text-[11px] text-slate-400 text-center">
-      Protected by 256-bit SSL encryption. Pesapal Payment Gateway.
-    </p>
-  </div>
-
-  <script>
-    async function confirmPayment() {
-      const btn = document.getElementById('payBtn');
-      btn.innerHTML = '<span>Processing Mobile Money PIN Prompt...</span>';
-      btn.disabled = true;
-
-      try {
-        const res = await fetch('/api/pesapal/verify-status?orderTrackingId=DEMO_TRK_${Date.now()}&merchantReference=${ref}&userId=${userId}', { credentials: 'omit' });
-        const data = await res.json();
-        
-        btn.innerHTML = '<span>\u2705 Payment Approved! Redirecting...</span>';
-        btn.className = 'w-full py-3.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-sm flex items-center justify-center';
-        
-        setTimeout(() => {
-          if (window.opener) {
-            window.opener.postMessage({ type: 'PESAPAL_PAYMENT_SUCCESS', ref: '${ref}', amount: '${amt}' }, '*');
-            window.close();
-          } else {
-            window.location.href = '/?payment_success=true&amount=${amt}';
-          }
-        }, 1200);
-      } catch(e) {
-        btn.innerHTML = '<span>Retry Payment</span>';
-        btn.disabled = false;
-      }
-    }
-  </script>
-</body>
-</html>`);
 });
 app.post("/api/auth/validate-username", (req, res) => {
   const { username } = req.body;
@@ -1101,9 +952,17 @@ wss.on("connection", (ws) => {
               losses: 0,
               draws: 0,
               rating: 1200,
+              walletBalance: 200,
+              welcomeBonusClaimed: true,
               status: "online",
               createdAt: Date.now()
             };
+            recordTransaction(
+              targetId,
+              "deposit",
+              200,
+              "\u{1F381} Welcome Bonus Stake (200 UGX)"
+            );
           }
           usersMap.set(userProfile.id, userProfile);
           userSockets.set(userProfile.id, ws);
@@ -1160,6 +1019,42 @@ wss.on("connection", (ws) => {
             })
           );
           broadcastPresence();
+          break;
+        }
+        case "user:update_phone": {
+          if (!currentUserId) return;
+          const user = usersMap.get(currentUserId);
+          if (!user) return;
+          const { phoneNumber, normalizedPhone } = payload;
+          if (phoneNumber) {
+            user.phoneNumber = phoneNumber;
+            user.normalizedPhone = normalizedPhone;
+            usersMap.set(user.id, user);
+            persistUsers();
+            ws.send(
+              JSON.stringify({
+                type: "user:profile_updated",
+                payload: { user }
+              })
+            );
+          }
+          break;
+        }
+        case "user:delete_account": {
+          const targetId = payload?.userId || currentUserId;
+          if (targetId) {
+            usersMap.delete(targetId);
+            userSockets.delete(targetId);
+            persistUsers();
+            broadcastPresence();
+            ws.send(
+              JSON.stringify({
+                type: "user:deleted_ack",
+                payload: { userId: targetId }
+              })
+            );
+          }
+          currentUserId = null;
           break;
         }
         // --- CHALLENGES / MATCHMAKING ---
@@ -1269,8 +1164,8 @@ wss.on("connection", (ws) => {
                   winner: null,
                   createdAt: Date.now(),
                   lastMoveTimestamp: Date.now(),
-                  turnTimeLimitSeconds: 15,
-                  turnDeadline: Date.now() + 15e3,
+                  turnTimeLimitSeconds: 20,
+                  turnDeadline: Date.now() + 2e4,
                   spectatorsCount: 0,
                   isBotGame: true,
                   botDifficulty: "medium"
@@ -1371,8 +1266,8 @@ wss.on("connection", (ws) => {
             winner: null,
             createdAt: Date.now(),
             lastMoveTimestamp: Date.now(),
-            turnTimeLimitSeconds: 15,
-            turnDeadline: Date.now() + 15e3,
+            turnTimeLimitSeconds: 20,
+            turnDeadline: Date.now() + 2e4,
             spectatorsCount: 0
           };
           activeRooms.set(roomId, room);
@@ -1445,8 +1340,8 @@ wss.on("connection", (ws) => {
             winner: null,
             createdAt: Date.now(),
             lastMoveTimestamp: Date.now(),
-            turnTimeLimitSeconds: 15,
-            turnDeadline: Date.now() + 15e3,
+            turnTimeLimitSeconds: 20,
+            turnDeadline: Date.now() + 2e4,
             spectatorsCount: 0
           };
           activeRooms.set(roomId, room);
@@ -1488,8 +1383,8 @@ wss.on("connection", (ws) => {
               color: "black"
             };
             room.status = "playing";
-            room.turnTimeLimitSeconds = 15;
-            room.turnDeadline = Date.now() + 15e3;
+            room.turnTimeLimitSeconds = 20;
+            room.turnDeadline = Date.now() + 2e4;
             user.status = "in-game";
             broadcastPresence();
             broadcast("lobby:rooms", Array.from(activeRooms.values()));
@@ -1551,8 +1446,8 @@ wss.on("connection", (ws) => {
           const nextTurn = isRedTurn ? "black" : "red";
           room.currentTurn = nextTurn;
           room.lastMoveTimestamp = Date.now();
-          room.turnTimeLimitSeconds = 15;
-          room.turnDeadline = Date.now() + 15e3;
+          room.turnTimeLimitSeconds = 20;
+          room.turnDeadline = Date.now() + 2e4;
           room.disconnectedPlayerId = null;
           room.disconnectDeadline = null;
           const gameOver = checkGameOver(room.board, nextTurn);
@@ -1586,7 +1481,7 @@ wss.on("connection", (ws) => {
           if (room.currentTurn === opponentColor && room.turnDeadline && Date.now() >= room.turnDeadline - 1e3) {
             room.status = "ended";
             room.winner = myColor;
-            room.winReason = `${opponentPlayer?.username || "Opponent"} timed out / disconnected (15-second countdown expired). ${myPlayer?.username || "You"} won!`;
+            room.winReason = `${opponentPlayer?.username || "Opponent"} timed out / disconnected (20-second countdown expired). ${myPlayer?.username || "You"} won!`;
             handleGameEnd(room);
             broadcastToRoom(room, "game:updated", room);
             broadcast("lobby:rooms", Array.from(activeRooms.values()));
@@ -1717,9 +1612,9 @@ wss.on("connection", (ws) => {
           if (isRed || isBlack) {
             const playerColor = isRed ? "red" : "black";
             room.disconnectedPlayerId = currentUserId;
-            room.disconnectDeadline = Date.now() + 15e3;
+            room.disconnectDeadline = Date.now() + 2e4;
             if (room.currentTurn === playerColor) {
-              room.turnDeadline = Date.now() + 15e3;
+              room.turnDeadline = Date.now() + 2e4;
             }
             broadcastToRoom(room, "game:updated", room);
           }
@@ -1744,7 +1639,7 @@ setInterval(() => {
       room.status = "ended";
       room.winner = opponentColor;
       const isDisconnected = room.disconnectedPlayerId === activePlayer.id;
-      room.winReason = isDisconnected ? `${activePlayer.username} lost internet connection / disconnected. ${opponentPlayer?.username || "Opponent"} wins (15s limit)!` : `${activePlayer.username} did not move in 15 seconds. ${opponentPlayer?.username || "Opponent"} wins by timeout!`;
+      room.winReason = isDisconnected ? `${activePlayer.username} lost internet connection / disconnected. ${opponentPlayer?.username || "Opponent"} wins (20s limit)!` : `${activePlayer.username} did not move in 20 seconds. ${opponentPlayer?.username || "Opponent"} wins by timeout!`;
       handleGameEnd(room);
       broadcastToRoom(room, "game:updated", room);
       broadcast("lobby:rooms", Array.from(activeRooms.values()));
@@ -1796,6 +1691,17 @@ function executeBotTurn(room) {
     }, 600);
   }
 }
+function getGameServiceFee(stakeAmount) {
+  if (stakeAmount <= 0) return 0;
+  if (stakeAmount === 200) return 30;
+  if (stakeAmount === 500) return 50;
+  if (stakeAmount === 1e3) return 100;
+  if (stakeAmount === 2e3) return 400;
+  if (stakeAmount === 5e3) return 1e3;
+  if (stakeAmount === 1e4) return 2e3;
+  if (stakeAmount === 2e4) return 4e3;
+  return Math.round(stakeAmount * 0.2);
+}
 function handleGameEnd(room) {
   if (room.redPlayer && !room.redPlayer.isBot) {
     const redUser = usersMap.get(room.redPlayer.id);
@@ -1816,22 +1722,24 @@ function handleGameEnd(room) {
     }
   }
   if (room.stakeAmount > 0) {
-    const totalPot = room.potAmount || room.stakeAmount * 2;
+    const serviceFee = getGameServiceFee(room.stakeAmount);
+    const totalCollected = room.stakeAmount * 2;
+    const netPayout = Math.max(0, totalCollected - serviceFee);
     if (room.winner === "red" && room.redPlayer && !room.redPlayer.isBot) {
       adjustUserWallet(
         room.redPlayer.id,
-        totalPot,
+        netPayout,
         "stake_win",
-        `Victory Winnings! Pot for match ${room.name} (+${totalPot.toLocaleString()} UGX)`,
-        { roomId: room.id }
+        `Victory Winnings for ${room.name} (+${netPayout.toLocaleString()} UGX, Service Fee: ${serviceFee} UGX)`,
+        { roomId: room.id, serviceFee, stakeAmount: room.stakeAmount }
       );
     } else if (room.winner === "black" && room.blackPlayer && !room.blackPlayer.isBot) {
       adjustUserWallet(
         room.blackPlayer.id,
-        totalPot,
+        netPayout,
         "stake_win",
-        `Victory Winnings! Pot for match ${room.name} (+${totalPot.toLocaleString()} UGX)`,
-        { roomId: room.id }
+        `Victory Winnings for ${room.name} (+${netPayout.toLocaleString()} UGX, Service Fee: ${serviceFee} UGX)`,
+        { roomId: room.id, serviceFee, stakeAmount: room.stakeAmount }
       );
     } else if (room.winner === "draw" || !room.winner) {
       if (room.redPlayer && !room.redPlayer.isBot) {
@@ -1894,10 +1802,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = import_path2.default.join(process.cwd(), "dist");
+    const distPath = import_path.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(import_path2.default.join(distPath, "index.html"));
+      res.sendFile(import_path.default.join(distPath, "index.html"));
     });
   }
   httpServer.listen(PORT, "0.0.0.0", () => {

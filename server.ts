@@ -951,8 +951,8 @@ wss.on('connection', (ws: WebSocket) => {
                   winner: null,
                   createdAt: Date.now(),
                   lastMoveTimestamp: Date.now(),
-                  turnTimeLimitSeconds: 15,
-                  turnDeadline: Date.now() + 15000,
+                  turnTimeLimitSeconds: 20,
+                  turnDeadline: Date.now() + 20000,
                   spectatorsCount: 0,
                   isBotGame: true,
                   botDifficulty: 'medium',
@@ -1069,8 +1069,8 @@ wss.on('connection', (ws: WebSocket) => {
             winner: null,
             createdAt: Date.now(),
             lastMoveTimestamp: Date.now(),
-            turnTimeLimitSeconds: 15,
-            turnDeadline: Date.now() + 15000,
+            turnTimeLimitSeconds: 20,
+            turnDeadline: Date.now() + 20000,
             spectatorsCount: 0,
           };
 
@@ -1160,8 +1160,8 @@ wss.on('connection', (ws: WebSocket) => {
             winner: null,
             createdAt: Date.now(),
             lastMoveTimestamp: Date.now(),
-            turnTimeLimitSeconds: 15,
-            turnDeadline: Date.now() + 15000,
+            turnTimeLimitSeconds: 20,
+            turnDeadline: Date.now() + 20000,
             spectatorsCount: 0,
           };
 
@@ -1214,8 +1214,8 @@ wss.on('connection', (ws: WebSocket) => {
               color: 'black',
             };
             room.status = 'playing';
-            room.turnTimeLimitSeconds = 15;
-            room.turnDeadline = Date.now() + 15000;
+            room.turnTimeLimitSeconds = 20;
+            room.turnDeadline = Date.now() + 20000;
             user.status = 'in-game';
 
             broadcastPresence();
@@ -1302,8 +1302,8 @@ wss.on('connection', (ws: WebSocket) => {
           const nextTurn: PieceColor = isRedTurn ? 'black' : 'red';
           room.currentTurn = nextTurn;
           room.lastMoveTimestamp = Date.now();
-          room.turnTimeLimitSeconds = 15;
-          room.turnDeadline = Date.now() + 15000;
+          room.turnTimeLimitSeconds = 20;
+          room.turnDeadline = Date.now() + 20000;
           room.disconnectedPlayerId = null;
           room.disconnectDeadline = null;
 
@@ -1355,7 +1355,7 @@ wss.on('connection', (ws: WebSocket) => {
           ) {
             room.status = 'ended';
             room.winner = myColor;
-            room.winReason = `${opponentPlayer?.username || 'Opponent'} timed out / disconnected (15-second countdown expired). ${myPlayer?.username || 'You'} won!`;
+            room.winReason = `${opponentPlayer?.username || 'Opponent'} timed out / disconnected (20-second countdown expired). ${myPlayer?.username || 'You'} won!`;
             handleGameEnd(room);
             broadcastToRoom(room, 'game:updated', room);
             broadcast('lobby:rooms', Array.from(activeRooms.values()));
@@ -1514,10 +1514,10 @@ wss.on('connection', (ws: WebSocket) => {
           if (isRed || isBlack) {
             const playerColor = isRed ? 'red' : 'black';
             room.disconnectedPlayerId = currentUserId;
-            room.disconnectDeadline = Date.now() + 15000;
+            room.disconnectDeadline = Date.now() + 20000;
             if (room.currentTurn === playerColor) {
-              // Immediately start or cap the 15-second forfeit countdown
-              room.turnDeadline = Date.now() + 15000;
+              // Immediately start or cap the 20-second forfeit countdown
+              room.turnDeadline = Date.now() + 20000;
             }
             broadcastToRoom(room, 'game:updated', room);
           }
@@ -1529,7 +1529,7 @@ wss.on('connection', (ws: WebSocket) => {
   });
 });
 
-// Auto-check for 15-second turn timeouts & internet disconnect forfeits every 1 second
+// Auto-check for 20-second turn timeouts & internet disconnect forfeits every 1 second
 setInterval(() => {
   const now = Date.now();
   for (const [roomId, room] of activeRooms.entries()) {
@@ -1542,7 +1542,7 @@ setInterval(() => {
 
     if (!activePlayer || activePlayer.isBot) continue;
 
-    // Check if player disconnected or exceeded 15s turn timer
+    // Check if player disconnected or exceeded 20s turn timer
     const isDeadlineReached = !!room.turnDeadline && now >= room.turnDeadline;
     const isDisconnectExpired =
       room.disconnectedPlayerId === activePlayer.id &&
@@ -1554,8 +1554,8 @@ setInterval(() => {
       room.winner = opponentColor;
       const isDisconnected = room.disconnectedPlayerId === activePlayer.id;
       room.winReason = isDisconnected
-        ? `${activePlayer.username} lost internet connection / disconnected. ${opponentPlayer?.username || 'Opponent'} wins (15s limit)!`
-        : `${activePlayer.username} did not move in 15 seconds. ${opponentPlayer?.username || 'Opponent'} wins by timeout!`;
+        ? `${activePlayer.username} lost internet connection / disconnected. ${opponentPlayer?.username || 'Opponent'} wins (20s limit)!`
+        : `${activePlayer.username} did not move in 20 seconds. ${opponentPlayer?.username || 'Opponent'} wins by timeout!`;
 
       handleGameEnd(room);
       broadcastToRoom(room, 'game:updated', room);

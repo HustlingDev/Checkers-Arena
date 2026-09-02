@@ -21,7 +21,7 @@ export const CreateTableModal: React.FC<CreateTableModalProps> = ({
 }) => {
   const [selectedStake, setSelectedStake] = useState<number>(initialStake);
   const [tableName, setTableName] = useState<string>(`${currentUser.username}'s Arena Table`);
-  const [timeLimit, setTimeLimit] = useState<number>(15); // 15s turn limit default
+  const [timeLimit, setTimeLimit] = useState<number>(20); // 20s turn limit default
 
   // Update selectedStake if initialStake changes
   React.useEffect(() => {

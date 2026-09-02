@@ -760,8 +760,8 @@ export async function respondToChallengeInFirestore(
       winner: null,
       createdAt: Date.now(),
       lastMoveTimestamp: Date.now(),
-      turnTimeLimitSeconds: 15,
-      turnDeadline: Date.now() + 15000,
+      turnTimeLimitSeconds: 20,
+      turnDeadline: Date.now() + 20000,
       spectatorsCount: 0,
     };
 

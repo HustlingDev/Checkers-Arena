@@ -792,8 +792,8 @@ export default function App() {
         winner: null,
         createdAt: Date.now(),
         lastMoveTimestamp: Date.now(),
-        turnTimeLimitSeconds: 15,
-        turnDeadline: Date.now() + 15000,
+        turnTimeLimitSeconds: 20,
+        turnDeadline: Date.now() + 20000,
         spectatorsCount: 0,
       };
 
@@ -996,7 +996,7 @@ export default function App() {
     botDifficulty: BotDifficulty = 'medium',
     tableName?: string,
     stakeAmount: number = 0,
-    timeLimitSeconds: number = 15
+    timeLimitSeconds: number = 20
   ) => {
     const player = currentUser || {
       id: 'guest_' + Math.random().toString(36).substring(2, 9),
@@ -1162,8 +1162,8 @@ export default function App() {
           color: 'black',
         },
         status: 'playing',
-        turnTimeLimitSeconds: roomToJoin.turnTimeLimitSeconds || 15,
-        turnDeadline: Date.now() + (roomToJoin.turnTimeLimitSeconds || 15) * 1000,
+        turnTimeLimitSeconds: roomToJoin.turnTimeLimitSeconds || 20,
+        turnDeadline: Date.now() + (roomToJoin.turnTimeLimitSeconds || 20) * 1000,
         lastMoveTimestamp: Date.now(),
       };
       setActiveRoom(updatedRoom);
@@ -1201,7 +1201,7 @@ export default function App() {
         recordGameOutcome(myColor, over.winner || 'draw');
       }
 
-      const timeLimitSec = activeRoom.turnTimeLimitSeconds || 15;
+      const timeLimitSec = activeRoom.turnTimeLimitSeconds || 20;
       const updatedRoom: GameRoom = {
         ...activeRoom,
         board: newBoard,
@@ -1252,10 +1252,10 @@ export default function App() {
           ...prev,
           status: 'ended',
           winner,
-          winReason: 'Opponent did not make a move in 15 seconds (Forfeit)',
+          winReason: 'Opponent did not make a move in 20 seconds (Forfeit)',
         };
       });
-      showNotification('Opponent turn timer expired (15s)! Match won.', 'info');
+      showNotification('Opponent turn timer expired (20s)! Match won and money awarded.', 'info');
     }
   };
 
@@ -1612,7 +1612,7 @@ export default function App() {
 
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-black text-amber-400">
-                <span>⏱️ 15 Min Turn Timer</span>
+                <span>⏱️ 20s Turn Timer</span>
                 <span>•</span>
                 <span>Expires in {challengeTimer}s</span>
               </div>
