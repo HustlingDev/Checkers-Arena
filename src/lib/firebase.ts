@@ -398,7 +398,7 @@ export async function signUpWithFirebaseEmail(params: {
   rememberMe?: boolean;
 }): Promise<UserProfile> {
   const cleanEmail = params.email.trim().toLowerCase();
-  const cleanUsername = params.username.trim();
+  const cleanUsername = params.username.trim().toLowerCase();
   const cleanRealName = params.realName.trim();
   const cleanPhone = params.phoneNumber ? params.phoneNumber.trim() : '';
 
@@ -409,7 +409,11 @@ export async function signUpWithFirebaseEmail(params: {
     throw new Error('Password must be at least 6 characters.');
   }
 
-  // Pre-validate username uniqueness in Firestore
+  // Pre-validate username uniqueness and lowercase letters in Firestore
+  if (!/^[a-z]+$/.test(cleanUsername)) {
+    throw new Error('Username must contain lowercase letters only (a-z).');
+  }
+
   const usernameTaken = await isUsernameTaken(cleanUsername);
   if (usernameTaken) {
     throw new Error('This username is already taken. Please choose another username.');
@@ -529,7 +533,10 @@ export async function registerInAppUser(params: {
   phoneNumber: string;
   avatarId: string;
 }): Promise<UserProfile> {
-  const cleanUsername = params.username.trim();
+  const cleanUsername = params.username.trim().toLowerCase();
+  if (!/^[a-z]+$/.test(cleanUsername)) {
+    throw new Error('Username must contain lowercase letters only (a-z).');
+  }
   const taken = await isUsernameTaken(cleanUsername);
   if (taken) {
     throw new Error('This username is already taken. Please choose another username.');

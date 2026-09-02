@@ -11,7 +11,7 @@ import {
   getNetGameWinnings,
 } from './types';
 import { Header } from './components/Header';
-import { BottomAuthSheet } from './components/BottomAuthSheet';
+import { AuthModal } from './components/AuthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { BoardTheme } from './components/CheckersBoard';
 import { OnlineLobby } from './components/OnlineLobby';
@@ -1502,11 +1502,11 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom Sheet Auth Panel */}
-      <BottomAuthSheet
+      {/* In-App Authentication Modal (Full Name, Unique Username, Email, Password, Mobile Phone) */}
+      <AuthModal
         isOpen={isAuthModalOpen}
         onClose={handleAuthModalClose}
-        onLoginSuccess={handleAuthSuccess}
+        onAuthSuccess={handleAuthSuccess}
         allowDismiss={Boolean(currentUser && !currentUser.isGuest)}
       />
 
