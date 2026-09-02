@@ -118,13 +118,52 @@ async function run() {
     'drawable-land-xxxhdpi',
   ];
 
+  // Helper to create circular splash drawable
+  async function createCircularSplash(size, destPath) {
+    const iconSize = Math.round(size * 0.65); // 65% of splash canvas
+    const radius = iconSize / 2;
+    const strokeWidth = Math.max(3, Math.round(iconSize * 0.025));
+
+    // Circular mask
+    const circleMask = Buffer.from(
+      `<svg width="${iconSize}" height="${iconSize}"><circle cx="${radius}" cy="${radius}" r="${radius - 1}" fill="white" /></svg>`
+    );
+
+    // Circular gold ring overlay
+    const ringOverlay = Buffer.from(
+      `<svg width="${iconSize}" height="${iconSize}">
+        <circle cx="${radius}" cy="${radius}" r="${radius - strokeWidth}" fill="none" stroke="#f59e0b" stroke-width="${strokeWidth}" />
+        <circle cx="${radius}" cy="${radius}" r="${radius - 1}" fill="none" stroke="#ef4444" stroke-width="${Math.max(1, Math.round(strokeWidth / 3))}" opacity="0.6" />
+      </svg>`
+    );
+
+    const maskedIcon = await sharp(sourceImage)
+      .resize(iconSize, iconSize)
+      .composite([
+        { input: circleMask, blend: 'dest-in' },
+        { input: ringOverlay, blend: 'over' }
+      ])
+      .png()
+      .toBuffer();
+
+    // Composite centered on a deep slate-950 #020617 canvas
+    await sharp({
+      create: {
+        width: size,
+        height: size,
+        channels: 4,
+        background: { r: 2, g: 6, b: 23, alpha: 1 }
+      }
+    })
+      .composite([{ input: maskedIcon, gravity: 'center' }])
+      .png()
+      .toFile(destPath);
+  }
+
   for (const dir of splashDirs) {
     const targetDir = path.join(androidResDir, dir);
     if (fs.existsSync(targetDir)) {
-      await sharp(sourceImage)
-        .resize(512, 512)
-        .png()
-        .toFile(path.join(targetDir, 'splash.png'));
+      await createCircularSplash(512, path.join(targetDir, 'splash.png'));
     }
   }
 

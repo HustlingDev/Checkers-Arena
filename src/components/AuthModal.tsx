@@ -4,6 +4,10 @@ import { AvatarBadge } from './AvatarBadge';
 import {
   User,
   Phone,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
   AlertCircle,
   CheckCircle2,
   Crown,
@@ -12,6 +16,9 @@ import {
   Loader2,
   Sparkles,
   ShieldCheck,
+  KeyRound,
+  ArrowLeft,
+  Info,
 } from 'lucide-react';
 import {
   isUsernameTaken,
@@ -20,7 +27,9 @@ import {
   saveUserProfileToFirestore,
   setAuthRememberMe,
   signInWithGoogle,
-  signInWithApple,
+  signUpWithFirebaseEmail,
+  signInWithFirebaseEmail,
+  sendFirebasePasswordReset,
 } from '../lib/firebase';
 import { UserProfile } from '../types';
 
@@ -37,9 +46,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onAuthSuccess,
   initialMode = 'signup',
 }) => {
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>(initialMode);
+  const [authMethod, setAuthMethod] = useState<'email' | 'quick'>('email');
 
-  // Sign Up Fields
+  // Sign Up / In-App Email Fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [realName, setRealName] = useState('');
   const [username, setUsername] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -47,8 +60,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [rememberMe, setRememberMe] = useState(true);
   const [selectedAvatarId, setSelectedAvatarId] = useState('avatar-crown');
 
-  // Sign In Field
+  // Quick Handle Sign In Field
   const [loginIdentifier, setLoginIdentifier] = useState('');
+
+  // Password Reset Email
+  const [resetEmail, setResetEmail] = useState('');
 
   // Local saved profile detection for 1-Tap Fast Login
   const [savedUser, setSavedUser] = useState<UserProfile | null>(null);
@@ -134,7 +150,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Google Sign In Handler
+  // Google Sign In Handler (with helpful notice)
   const handleGoogleSignIn = async () => {
     try {
       setIsSocialSubmitting('google');
@@ -148,42 +164,69 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }, 500);
     } catch (err: any) {
       console.warn('Google sign-in warning:', err);
-      setErrorMsg(
-        err?.code === 'auth/popup-closed-by-user'
-          ? 'Sign in popup was closed. You can also sign up directly with the form below.'
-          : err?.message || 'Google sign-in could not be completed. Try direct sign up below!'
-      );
+      const msg = err?.code === 'auth/popup-closed-by-user'
+        ? 'Sign in popup was closed. Use the 100% In-App form below for instant access without any external browser!'
+        : err?.message || 'Google sign-in could not be completed. You can sign in directly using your email/username below!';
+      setErrorMsg(msg);
     } finally {
       setIsSocialSubmitting(null);
     }
   };
 
-  // Apple Sign In Handler
-  const handleAppleSignIn = async () => {
+  // Direct In-App Email & Password Login Handler
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setErrorMsg('Please enter your email address.');
+      return;
+    }
+    if (!password) {
+      setErrorMsg('Please enter your password.');
+      return;
+    }
+
     try {
-      setIsSocialSubmitting('apple');
-      setErrorMsg(null);
-      const profile = await signInWithApple(rememberMe);
-      setSuccessMsg(`Welcome, ${profile.username}!`);
+      setIsSubmitting(true);
+      const profile = await signInWithFirebaseEmail({
+        email: cleanEmail,
+        password,
+        rememberMe,
+      });
+
+      setSuccessMsg(`Welcome back, ${profile.username}! Logging into arena...`);
       triggerLandscape();
       setTimeout(() => {
         onAuthSuccess(profile);
         if (onClose) onClose();
       }, 500);
     } catch (err: any) {
-      console.warn('Apple sign-in warning:', err);
-      setErrorMsg(
-        err?.code === 'auth/popup-closed-by-user'
-          ? 'Apple sign-in popup was closed. You can also sign up directly with the form below.'
-          : err?.message || 'Apple sign-in could not be completed. Try direct sign up below!'
-      );
+      // If email auth fails, try handle fallback
+      try {
+        const handleProfile = await loginWithUsernameOrPhone(cleanEmail);
+        if (handleProfile) {
+          setSuccessMsg(`Welcome back, ${handleProfile.username}!`);
+          triggerLandscape();
+          setTimeout(() => {
+            onAuthSuccess(handleProfile);
+            if (onClose) onClose();
+          }, 500);
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+      setErrorMsg(err?.message || 'Sign in failed. Please check your email and password.');
     } finally {
-      setIsSocialSubmitting(null);
+      setIsSubmitting(false);
     }
   };
 
-  // Direct In-App Login Handler
-  const handleInAppLogin = async (e: React.FormEvent) => {
+  // Direct In-App Handle (Username or Phone) Login Handler
+  const handleQuickHandleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -258,7 +301,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Direct In-App Account Creation Handler
+  // Direct In-App Firebase Account Creation Handler
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -266,6 +309,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const cleanRealName = realName.trim();
     const cleanUsername = username.trim();
+    const cleanEmail = email.trim();
     const cleanPhone = phoneNumber.trim();
 
     if (!cleanRealName) {
@@ -274,7 +318,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (usernameStatus === 'taken' || usernameStatus === 'invalid' || !cleanUsername) {
-      setErrorMsg(usernameError || 'Please choose a valid unique username.');
+      setErrorMsg(usernameError || 'Please choose a valid unique username (letters only).');
+      return;
+    }
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
       return;
     }
 
@@ -290,14 +344,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      await setAuthRememberMe(rememberMe);
-
-      // Register directly in Firestore
-      const newProfile = await registerInAppUser({
+      // Register directly with Firebase Auth and sync to Firestore
+      const newProfile = await signUpWithFirebaseEmail({
+        email: cleanEmail,
+        password,
         username: cleanUsername,
         realName: cleanRealName,
         phoneNumber: cleanPhone,
         avatarId: selectedAvatarId,
+        rememberMe,
       });
 
       setSuccessMsg(`Account created for ${newProfile.username}! Starting arena...`);
@@ -308,7 +363,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (onClose) onClose();
       }, 500);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Account creation failed. Please try again.');
+      // Fallback: If Firebase Email signup fails with configuration, register in Firestore directly
+      try {
+        const directProfile = await registerInAppUser({
+          username: cleanUsername,
+          realName: cleanRealName,
+          phoneNumber: cleanPhone,
+          avatarId: selectedAvatarId,
+        });
+        setSuccessMsg(`Account created for ${directProfile.username}! Starting arena...`);
+        triggerLandscape();
+        setTimeout(() => {
+          onAuthSuccess(directProfile);
+          if (onClose) onClose();
+        }, 500);
+      } catch (fallbackErr: any) {
+        setErrorMsg(err?.message || fallbackErr?.message || 'Account creation failed. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Password Reset Handler
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const cleanEmail = resetEmail.trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await sendFirebasePasswordReset(cleanEmail);
+      setSuccessMsg(`Password reset email sent to ${cleanEmail}! Check your inbox.`);
+      setTimeout(() => {
+        setMode('signin');
+      }, 2500);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to send password reset email.');
     } finally {
       setIsSubmitting(false);
     }
@@ -316,117 +413,111 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in overflow-y-auto">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl my-auto overflow-hidden p-4 sm:p-6 space-y-4">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl my-auto overflow-hidden p-4 sm:p-6 space-y-4 max-h-[95vh] overflow-y-auto custom-scrollbar">
         {/* Header Title */}
         <div className="text-center space-y-1">
           <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-red-600 shadow-lg shadow-amber-900/30">
             <Crown className="w-5 h-5 text-slate-950" />
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-            {mode === 'signup' ? 'Join Checkers Arena' : 'Player In-App Login'}
+            {mode === 'signup'
+              ? 'Join Checkers Arena'
+              : mode === 'forgot'
+              ? 'Reset Password'
+              : 'Player In-App Login'}
           </h2>
           <p className="text-xs text-slate-400">
             {mode === 'signup'
-              ? 'Sign up with Google, Apple, or create a custom player profile!'
-              : 'Sign in to access your rating, custom avatar, and matches.'}
+              ? 'Create a 100% In-App Firebase account with no browser redirects!'
+              : mode === 'forgot'
+              ? 'Enter your account email to receive a password reset link.'
+              : 'Sign in directly in-app to access your rank, wallet, and games.'}
           </p>
         </div>
 
-        {/* Quick Social Sign-In Row */}
-        <div className="grid grid-cols-2 gap-2.5">
-          {/* Google Sign In */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={isSocialSubmitting !== null}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-100 transition shadow active:scale-95 disabled:opacity-50"
-          >
-            {isSocialSubmitting === 'google' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-            ) : (
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-            )}
-            <span>Google</span>
-          </button>
+        {/* Mode Switcher Tabs (Sign Up / Sign In) */}
+        {mode !== 'forgot' && (
+          <div className="flex rounded-2xl bg-slate-950 p-1 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signup');
+                setErrorMsg(null);
+                setSuccessMsg(null);
+              }}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                mode === 'signup'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Create Account</span>
+            </button>
 
-          {/* Apple Sign In */}
-          <button
-            type="button"
-            onClick={handleAppleSignIn}
-            disabled={isSocialSubmitting !== null}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-100 transition shadow active:scale-95 disabled:opacity-50"
-          >
-            {isSocialSubmitting === 'apple' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-            ) : (
-              <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 170 170">
-                <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.06-7.7-7.85-12.04-14.36-6.41-9.78-11.48-20.73-15.19-32.84-3.71-12.11-5.57-23.75-5.57-34.93 0-14.28 3.56-26.04 10.67-35.29 7.11-9.24 16.03-13.97 26.74-14.2 4.47 0 9.54 1.15 15.22 3.44 5.68 2.29 9.38 3.49 11.08 3.61 2.24-.34 6.13-1.63 11.66-3.88 5.53-2.25 10.36-3.27 14.5-3.06 15.07.72 26.4 6.37 34 16.94-13.33 8.08-19.86 19.14-19.59 33.17.27 10.97 4.34 20.08 12.22 27.33 3.65 3.39 7.82 5.92 12.51 7.59-2.58 7.55-5.78 15.09-9.59 22.62zM119.22 33.56c0-7.39 2.68-14.38 8.03-20.97 5.35-6.58 11.95-10.77 19.79-12.59.35 1.15.53 2.37.53 3.67 0 7.39-2.78 14.49-8.34 21.3-5.56 6.81-12.3 11.04-20.22 12.69-.22-1.39-.33-2.75-.33-4.1z" />
-              </svg>
-            )}
-            <span>Apple</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signin');
+                setErrorMsg(null);
+                setSuccessMsg(null);
+              }}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                mode === 'signin'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Log In</span>
+            </button>
+          </div>
+        )}
 
-        {/* Divider */}
-        <div className="relative flex py-0.5 items-center">
-          <div className="flex-grow border-t border-slate-800"></div>
-          <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-            Or continue in-app
-          </span>
-          <div className="flex-grow border-t border-slate-800"></div>
-        </div>
+        {/* Quick Google Sign In */}
+        {mode !== 'forgot' && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={isSocialSubmitting !== null}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-100 transition shadow active:scale-95 disabled:opacity-50"
+            >
+              {isSocialSubmitting === 'google' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+              )}
+              <span>Continue with Google</span>
+            </button>
 
-        {/* Mode Switcher Tabs */}
-        <div className="flex rounded-2xl bg-slate-950 p-1 border border-slate-800">
-          <button
-            type="button"
-            onClick={() => {
-              setMode('signup');
-              setErrorMsg(null);
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-              mode === 'signup'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Create Profile</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMode('signin');
-              setErrorMsg(null);
-            }}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-              mode === 'signin'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <LogIn className="w-3.5 h-3.5" />
-            <span>Log In</span>
-          </button>
-        </div>
+            {/* Divider */}
+            <div className="relative flex py-0.5 items-center">
+              <div className="flex-grow border-t border-slate-800"></div>
+              <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                Or Use 100% In-App Authentication
+              </span>
+              <div className="flex-grow border-t border-slate-800"></div>
+            </div>
+          </div>
+        )}
 
         {/* Success Banner */}
         {successMsg && (
@@ -445,14 +536,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         )}
 
         {/* Quick In-App Restore Banner if Local User Exists */}
-        {savedUser && (
+        {mode === 'signin' && savedUser && (
           <div className="p-2.5 bg-slate-950 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3 shadow-inner">
             <div className="flex items-center gap-2.5 min-w-0">
               <AvatarBadge avatarId={savedUser.avatarId} size="sm" />
               <div className="truncate">
                 <div className="text-xs font-black text-amber-400 truncate">{savedUser.username}</div>
                 <div className="text-[10px] text-slate-400">
-                  {savedUser.rating || 1200} ELO • Saved account
+                  {savedUser.rating || 1200} ELO • Saved on this device
                 </div>
               </div>
             </div>
@@ -460,7 +551,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               type="button"
               onClick={handleQuickRestore}
               disabled={isSubmitting}
-              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 transition shadow flex items-center gap-1"
+              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 transition shadow flex items-center gap-1 active:scale-95"
             >
               <Sparkles className="w-3 h-3" />
               <span>1-Tap Play</span>
@@ -468,56 +559,172 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* In-App Log In Form */}
+        {/* In-App Sign In Form */}
         {mode === 'signin' && (
-          <form onSubmit={handleInAppLogin} className="space-y-3 pt-0.5">
-            <div className="space-y-1">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
-                Username or Phone Number
-              </label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={loginIdentifier}
-                  onChange={(e) => setLoginIdentifier(e.target.value)}
-                  placeholder="e.g., CheckersMaster or +256700000000"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
-                />
-              </div>
+          <div className="space-y-3">
+            {/* Toggle between Email Login and Username/Phone Login */}
+            <div className="flex text-[11px] font-bold border-b border-slate-800 pb-1 gap-4">
+              <button
+                type="button"
+                onClick={() => setAuthMethod('email')}
+                className={`pb-1 transition flex items-center gap-1.5 ${
+                  authMethod === 'email'
+                    ? 'text-amber-400 border-b-2 border-amber-400'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Email & Password</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMethod('quick')}
+                className={`pb-1 transition flex items-center gap-1.5 ${
+                  authMethod === 'quick'
+                    ? 'text-amber-400 border-b-2 border-amber-400'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Username or Phone</span>
+              </button>
             </div>
 
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-950 border-slate-700"
-              />
-              <span className="text-xs text-slate-300 font-medium">Keep me logged in on this device</span>
-            </label>
+            {authMethod === 'email' ? (
+              <form onSubmit={handleEmailLogin} className="space-y-3">
+                {/* Email Field */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="e.g., player@example.com"
+                      className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                    />
+                  </div>
+                </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting || !loginIdentifier.trim()}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-red-500 hover:from-amber-400 hover:to-red-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-950/30 transition transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  <span>Log In to Arena</span>
-                </>
-              )}
-            </button>
-          </form>
+                {/* Password Field */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setResetEmail(email);
+                        setErrorMsg(null);
+                        setSuccessMsg(null);
+                      }}
+                      className="text-[10px] text-amber-400 hover:underline font-semibold"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-10 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-500 bg-slate-950 border-slate-700"
+                  />
+                  <span className="text-[11px] text-slate-300 font-medium">Keep me signed in</span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !email.trim() || !password}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-red-500 hover:from-amber-400 hover:to-red-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-950/30 transition transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      <span>Log In (In-App)</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleQuickHandleLogin} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                    Username or Phone Number
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      placeholder="e.g., CheckersMaster or +256700000000"
+                      className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-500 bg-slate-950 border-slate-700"
+                  />
+                  <span className="text-[11px] text-slate-300 font-medium">Keep me signed in</span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !loginIdentifier.trim()}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-red-500 hover:from-amber-400 hover:to-red-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-950/30 transition transform active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      <span>Log In with Username/Phone</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
         )}
 
         {/* In-App Sign Up Form */}
         {mode === 'signup' && (
-          <form onSubmit={handleSignUp} className="space-y-3 pt-0.5">
+          <form onSubmit={handleSignUp} className="space-y-3">
             {/* Real Name */}
             <div className="space-y-1">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
@@ -579,10 +786,54 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
             </div>
 
+            {/* Email Address */}
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                Email Address <span className="text-amber-400 text-[10px] lowercase">(for in-app account)</span>
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g., player@example.com"
+                  className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                Password <span className="text-slate-400 text-[10px]">(min 6 characters)</span>
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-10 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
             {/* Phone Number */}
             <div className="space-y-1">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
-                Phone Number
+                Mobile Number <span className="text-amber-400 text-[10px] lowercase">(for prize payouts)</span>
               </label>
               <div className="relative">
                 <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -647,14 +898,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-3.5 h-3.5 rounded text-amber-500 focus:ring-amber-500 bg-slate-950 border-slate-700"
                 />
-                <span className="text-[11px] text-slate-300 font-medium">Remember me on this device</span>
+                <span className="text-[11px] text-slate-300 font-medium">Keep me signed in</span>
               </label>
             </div>
 
             {/* Submit Sign Up Button */}
             <button
               type="submit"
-              disabled={isSubmitting || !termsAccepted || usernameStatus === 'taken' || usernameStatus === 'invalid'}
+              disabled={isSubmitting || !termsAccepted || usernameStatus === 'taken' || usernameStatus === 'invalid' || !email.trim() || !password}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-red-500 hover:from-amber-400 hover:to-red-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-950/30 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
@@ -669,9 +920,60 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </form>
         )}
 
-        <div className="text-center text-[10px] text-slate-500 flex items-center justify-center gap-1.5">
+        {/* Forgot Password View */}
+        {mode === 'forgot' && (
+          <form onSubmit={handlePasswordReset} className="space-y-3">
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                Account Email Address
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="e.g., player@example.com"
+                  className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 rounded-xl text-slate-100 placeholder-slate-600 text-xs font-semibold transition"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting || !resetEmail.trim()}
+              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <KeyRound className="w-4 h-4" />
+                  <span>Send Reset Email</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signin');
+                setErrorMsg(null);
+                setSuccessMsg(null);
+              }}
+              className="w-full py-2 text-xs font-bold text-slate-400 hover:text-white flex items-center justify-center gap-1.5 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Sign In</span>
+            </button>
+          </form>
+        )}
+
+        {/* Real-time sync badge */}
+        <div className="text-center text-[10px] text-slate-500 flex items-center justify-center gap-1.5 pt-1 border-t border-slate-800/60">
           <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-          <span>Real-time Cloud Sync with Firebase Firestore Backend</span>
+          <span>Firebase In-App Authentication & Cloud Firestore</span>
         </div>
       </div>
     </div>

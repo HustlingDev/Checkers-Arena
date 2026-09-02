@@ -2,12 +2,18 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged,
   GoogleAuthProvider,
   OAuthProvider,
   signOut,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  User as FirebaseUser,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -353,25 +359,167 @@ export async function signInWithGoogle(rememberMe: boolean = true): Promise<User
   return existingProfile;
 }
 
-// Apple Sign In
-export async function signInWithApple(rememberMe: boolean = true): Promise<UserProfile> {
-  await setAuthRememberMe(rememberMe);
-  const provider = new OAuthProvider('apple.com');
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
+// Helper to format Firebase Auth error codes into clean user messages
+export function formatFirebaseAuthError(error: any): string {
+  if (!error) return 'Authentication failed. Please try again.';
+  const code = error?.code || '';
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'An account already exists with this email address. Please log in instead.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters long.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Invalid email or password. Please verify your credentials.';
+    case 'auth/too-many-requests':
+      return 'Too many failed login attempts. Access temporarily restricted. Try again later or reset password.';
+    case 'auth/user-disabled':
+      return 'This user account has been disabled.';
+    case 'auth/popup-closed-by-user':
+      return 'Sign-in window was closed before completion.';
+    case 'auth/network-request-failed':
+      return 'Network connection error. Please check your internet connection.';
+    default:
+      return error?.message || 'Authentication failed. Please try again.';
+  }
+}
 
-  let existingProfile = await getUserProfileFromFirestore(user.uid);
-  if (!existingProfile) {
-    existingProfile = createProfileFromFirebaseUser(user);
-    await saveUserProfileToFirestore(existingProfile);
-  } else {
-    existingProfile.isOnline = true;
-    existingProfile.lastActiveTimestamp = Date.now();
-    await saveUserProfileToFirestore(existingProfile);
+// 100% In-App Firebase Sign Up with Email & Password
+export async function signUpWithFirebaseEmail(params: {
+  email: string;
+  password: string;
+  username: string;
+  realName: string;
+  phoneNumber: string;
+  avatarId?: string;
+  rememberMe?: boolean;
+}): Promise<UserProfile> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  const cleanUsername = params.username.trim();
+  const cleanRealName = params.realName.trim();
+  const cleanPhone = params.phoneNumber ? params.phoneNumber.trim() : '';
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('Please enter a valid email address.');
+  }
+  if (!params.password || params.password.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
   }
 
-  localStorage.setItem('checkers_user_profile', JSON.stringify(existingProfile));
-  return existingProfile;
+  // Pre-validate username uniqueness in Firestore
+  const usernameTaken = await isUsernameTaken(cleanUsername);
+  if (usernameTaken) {
+    throw new Error('This username is already taken. Please choose another username.');
+  }
+
+  if (cleanPhone) {
+    const phoneTaken = await isPhoneNumberTaken(cleanPhone);
+    if (phoneTaken) {
+      throw new Error('This phone number is already linked to another account.');
+    }
+  }
+
+  await setAuthRememberMe(params.rememberMe ?? true);
+
+  // 1. Create Firebase Auth user
+  let userCred;
+  try {
+    userCred = await createUserWithEmailAndPassword(auth, cleanEmail, params.password);
+  } catch (err: any) {
+    throw new Error(formatFirebaseAuthError(err));
+  }
+
+  const fbUser = userCred.user;
+
+  // 2. Set Firebase Auth Display Name
+  try {
+    await updateProfile(fbUser, { displayName: cleanUsername });
+  } catch (e) {
+    console.warn('updateProfile warning:', e);
+  }
+
+  // 3. Create or save comprehensive user profile in Firestore
+  const newProfile: UserProfile = {
+    id: fbUser.uid,
+    username: cleanUsername,
+    realName: cleanRealName || cleanUsername,
+    phoneNumber: cleanPhone,
+    normalizedPhone: normalizePhoneNumber(cleanPhone),
+    isGuest: false,
+    avatarId: params.avatarId || 'avatar-crown',
+    termsAccepted: true,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    gamesPlayed: 0,
+    rating: 1200,
+    elo: 1200,
+    walletBalance: 200,
+    welcomeBonusClaimed: true,
+    status: 'online',
+    isOnline: true,
+    lastActiveTimestamp: Date.now(),
+    createdAt: Date.now(),
+  };
+
+  await saveUserProfileToFirestore(newProfile);
+  localStorage.setItem('checkers_user_profile', JSON.stringify(newProfile));
+  return newProfile;
+}
+
+// 100% In-App Firebase Sign In with Email & Password
+export async function signInWithFirebaseEmail(params: {
+  email: string;
+  password: string;
+  rememberMe?: boolean;
+}): Promise<UserProfile> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('Please enter your email address.');
+  }
+  if (!params.password) {
+    throw new Error('Please enter your password.');
+  }
+
+  await setAuthRememberMe(params.rememberMe ?? true);
+
+  let userCred;
+  try {
+    userCred = await signInWithEmailAndPassword(auth, cleanEmail, params.password);
+  } catch (err: any) {
+    throw new Error(formatFirebaseAuthError(err));
+  }
+
+  const fbUser = userCred.user;
+  let profile = await getUserProfileFromFirestore(fbUser.uid);
+
+  if (!profile) {
+    profile = createProfileFromFirebaseUser(fbUser);
+    await saveUserProfileToFirestore(profile);
+  } else {
+    profile.isOnline = true;
+    profile.lastActiveTimestamp = Date.now();
+    await saveUserProfileToFirestore(profile);
+  }
+
+  localStorage.setItem('checkers_user_profile', JSON.stringify(profile));
+  return profile;
+}
+
+// Send Firebase Password Reset Email In-App
+export async function sendFirebasePasswordReset(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('Please enter a valid email address.');
+  }
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (err: any) {
+    throw new Error(formatFirebaseAuthError(err));
+  }
 }
 
 // Register a new user in-app directly into Firestore
