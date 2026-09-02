@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { UserProfile, STAKE_TIERS } from '../types';
+import { UserProfile, STAKE_TIERS, getGameServiceFee, getNetGameWinnings } from '../types';
 import { AvatarBadge } from './AvatarBadge';
-import { Swords, X, Coins, Wallet, ShieldAlert } from 'lucide-react';
+import { Swords, X, Coins, Wallet, ShieldAlert, Trophy, Award } from 'lucide-react';
 
 interface ChallengeModalProps {
   currentUser: UserProfile;
@@ -34,6 +34,8 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
   const currentBalance = currentUser.walletBalance || 0;
   const hasInsufficientBalance = selectedStake > 0 && currentBalance < selectedStake;
+  const fee = getGameServiceFee(selectedStake);
+  const netWinning = getNetGameWinnings(selectedStake);
 
   const handleSend = () => {
     if (hasInsufficientBalance) {
@@ -113,6 +115,41 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
           </div>
         </div>
 
+        {/* Breakdown Card if Stake Selected */}
+        {selectedStake > 0 ? (
+          <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-xs space-y-1.5 shadow-inner">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="flex items-center gap-1">
+                <Coins className="w-3.5 h-3.5 text-amber-400" />
+                <span>Your Stake / Opponent Stake:</span>
+              </span>
+              <span className="font-bold text-white">{selectedStake.toLocaleString()} UGX each</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Total Prize Pot:</span>
+              </span>
+              <span className="font-bold text-white">{(selectedStake * 2).toLocaleString()} UGX</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-400 text-[11px]">
+              <span>Game Service Fee:</span>
+              <span className="font-semibold text-amber-400">-{fee.toLocaleString()} UGX</span>
+            </div>
+            <div className="pt-1 border-t border-amber-500/20 flex items-center justify-between text-emerald-300 font-black">
+              <span className="flex items-center gap-1">
+                <Award className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Winner Payout:</span>
+              </span>
+              <span className="text-sm font-black text-emerald-400">+{netWinning.toLocaleString()} UGX</span>
+            </div>
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-2xl bg-blue-950/30 border border-blue-800/40 text-[11px] text-blue-300 text-center font-medium">
+            ⚡ Practice Mode: Free friendly match with zero cash required.
+          </div>
+        )}
+
         {/* Insufficient balance notice */}
         {hasInsufficientBalance ? (
           <div className="p-3 rounded-2xl bg-rose-950/70 border border-rose-800/80 space-y-2">
@@ -128,7 +165,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
               className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Wallet className="w-3.5 h-3.5" />
-              <span>Top Up with Pesapal</span>
+              <span>Deposit via Mobile Money</span>
             </button>
           </div>
         ) : (

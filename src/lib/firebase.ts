@@ -635,7 +635,8 @@ export function deserializeRoomFromFirestore(data: any): GameRoom | null {
 export async function sendChallengeToFirestore(
   fromUser: UserProfile,
   toUser: UserProfile,
-  customChallengeId?: string
+  customChallengeId?: string,
+  stakeAmount: number = 0
 ): Promise<string> {
   const challengeId = customChallengeId || `ch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const challengeDoc = doc(db, 'challenges', challengeId);
@@ -645,11 +646,12 @@ export async function sendChallengeToFirestore(
     toUser,
     targetUserId: toUser.id,
     targetUsername: toUser.username,
+    stakeAmount: Number(stakeAmount) || 0,
     status: 'pending',
     createdAt: Date.now(),
   };
   await setDoc(challengeDoc, challengeData);
-  console.log(`[Firestore] Challenge created ${challengeId} from ${fromUser.username} to ${toUser.username}`);
+  console.log(`[Firestore] Challenge created ${challengeId} from ${fromUser.username} to ${toUser.username} (${stakeAmount} UGX)`);
   return challengeId;
 }
 
@@ -713,7 +715,8 @@ export async function respondToChallengeInFirestore(
   accept: boolean,
   fromUser: UserProfile,
   toUser: UserProfile,
-  existingRoomId?: string
+  existingRoomId?: string,
+  stakeAmount: number = 0
 ): Promise<{ roomId: string; room: GameRoom } | null> {
   try {
     const challengeRef = doc(db, 'challenges', challengeId);
@@ -745,6 +748,8 @@ export async function respondToChallengeInFirestore(
       id: roomId,
       name: `${redPlayer.username} vs ${blackPlayer.username}`,
       status: 'playing',
+      stakeAmount: Number(stakeAmount) || 0,
+      potAmount: (Number(stakeAmount) || 0) * 2,
       redPlayer,
       blackPlayer,
       currentTurn: 'red',
@@ -755,8 +760,8 @@ export async function respondToChallengeInFirestore(
       winner: null,
       createdAt: Date.now(),
       lastMoveTimestamp: Date.now(),
-      turnTimeLimitSeconds: 900,
-      turnDeadline: Date.now() + 900000,
+      turnTimeLimitSeconds: 15,
+      turnDeadline: Date.now() + 15000,
       spectatorsCount: 0,
     };
 

@@ -7,6 +7,8 @@ import {
   ChatMessage,
   LeaderboardEntry,
   MoveOption,
+  getGameServiceFee,
+  getNetGameWinnings,
 } from './types';
 import { Header } from './components/Header';
 import { BottomAuthSheet } from './components/BottomAuthSheet';
@@ -352,6 +354,12 @@ export default function App() {
               case 'challenge:received': {
                 setIncomingChallenge(payload);
                 sounds.playChallenge();
+                const stake = payload.stakeAmount || 0;
+                showNotification(
+                  `⚔️ ${payload.fromUser.username} challenged you to a ${stake > 0 ? `${stake.toLocaleString()} UGX Stake` : 'Free'} Checkers match!`,
+                  'info',
+                  10000
+                );
                 break;
               }
 
@@ -540,10 +548,11 @@ export default function App() {
         if (challenge && !handledChallengeIdsRef.current.has(challenge.id)) {
           setIncomingChallenge(challenge);
           sounds.playChallenge();
+          const stake = challenge.stakeAmount || 0;
           showNotification(
-            `⚔️ ${challenge.fromUser.username} challenged you to a Checkers match!`,
+            `⚔️ ${challenge.fromUser.username} challenged you to a ${stake > 0 ? `${stake.toLocaleString()} UGX Stake` : 'Free'} Checkers match!`,
             'info',
-            8000
+            10000
           );
         }
       }
@@ -654,11 +663,24 @@ export default function App() {
     sendWs('challenge:send', { targetUserId, targetUser, challengeId, stakeAmount });
     if (currentUser && targetUser) {
       try {
-        const cId = await sendChallengeToFirestore(currentUser, targetUser, challengeId);
+        const cId = await sendChallengeToFirestore(currentUser, targetUser, challengeId, stakeAmount);
         if (cId) {
           const unsub = subscribeToChallengeDoc(cId, (snapData) => {
             if (snapData?.status === 'accepted') {
               unsub();
+              if (stakeAmount > 0) {
+                setCurrentUser((prev) => {
+                  if (!prev) return prev;
+                  const updated = {
+                    ...prev,
+                    walletBalance: Math.max(0, (prev.walletBalance || 0) - stakeAmount),
+                    totalStaked: (prev.totalStaked || 0) + stakeAmount,
+                  };
+                  localStorage.setItem('checkers_user_profile', JSON.stringify(updated));
+                  saveUserProfileToFirestore(updated).catch(() => {});
+                  return updated;
+                });
+              }
               if (snapData.room) {
                 setActiveRoom(snapData.room);
               }
@@ -719,10 +741,22 @@ export default function App() {
     if (accept) {
       sounds.playMove();
       showNotification(
-        `⚔️ Challenge allowed! Creating game table for you and ${challenge.fromUser.username}...`,
+        `⚔️ Challenge accepted! Entering game vs ${challenge.fromUser.username}...`,
         'info',
         5000
       );
+
+      // Deduct respondent's stake upon acceptance
+      if (stakeAmount > 0 && currentUser) {
+        const updatedMe: UserProfile = {
+          ...currentUser,
+          walletBalance: Math.max(0, currentBalance - stakeAmount),
+          totalStaked: (currentUser.totalStaked || 0) + stakeAmount,
+        };
+        setCurrentUser(updatedMe);
+        localStorage.setItem('checkers_user_profile', JSON.stringify(updatedMe));
+        saveUserProfileToFirestore(updatedMe).catch(() => {});
+      }
 
       // Challenger (fromUser) is Red (moves first), Opponent who accepts (toUser) is Black
       const redPlayer: GamePlayer = {
@@ -788,7 +822,8 @@ export default function App() {
           accept,
           challenge.fromUser,
           currentUser,
-          roomId
+          roomId,
+          stakeAmount
         );
         if (accept && res && res.room) {
           setActiveRoom(res.room);
@@ -824,16 +859,43 @@ export default function App() {
     let newLosses = currentUser.losses || 0;
     let newDraws = currentUser.draws || 0;
     let newRating = currentUser.rating || currentUser.elo || 1200;
+    let newWalletBalance = currentUser.walletBalance || 0;
+    let newTotalWon = currentUser.totalWon || 0;
+
+    const currentStake = activeRoomRef.current?.stakeAmount || activeRoom?.stakeAmount || 0;
 
     if (winnerColor === userColor) {
       newWins += 1;
       newRating += 18;
       sounds.playVictory();
-      showNotification(`Match won! Rating updated to ${newRating} (+18 ELO)`, 'info');
+      
+      if (currentStake > 0) {
+        const serviceFee = getGameServiceFee(currentStake);
+        const netPayout = Math.max(0, currentStake * 2 - serviceFee);
+        newWalletBalance += netPayout;
+        newTotalWon += netPayout;
+        showNotification(
+          `🏆 Challenge Victory! Opponent's stake won! (+${netPayout.toLocaleString()} UGX payout after ${serviceFee} UGX fee). Rating: ${newRating} (+18 ELO)`,
+          'info',
+          9000
+        );
+      } else {
+        showNotification(`Match won! Rating updated to ${newRating} (+18 ELO)`, 'info');
+      }
     } else if (winnerColor === 'draw') {
       newDraws += 1;
       newRating += 2;
-      showNotification(`Match drawn! Rating: ${newRating}`, 'info');
+      
+      if (currentStake > 0) {
+        newWalletBalance += currentStake;
+        showNotification(
+          `🤝 Match drawn! Your ${currentStake.toLocaleString()} UGX stake has been refunded. Rating: ${newRating}`,
+          'info',
+          6000
+        );
+      } else {
+        showNotification(`Match drawn! Rating: ${newRating}`, 'info');
+      }
     } else {
       newLosses += 1;
       newRating = Math.max(800, newRating - 12);
@@ -848,6 +910,8 @@ export default function App() {
       draws: newDraws,
       rating: newRating,
       elo: newRating,
+      walletBalance: newWalletBalance,
+      totalWon: newTotalWon,
     };
 
     setCurrentUser(updatedUser);
@@ -1559,17 +1623,25 @@ export default function App() {
 
               {/* Stake and Pot Details */}
               {(incomingChallenge.stakeAmount || 0) > 0 ? (
-                <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 text-left space-y-1 shadow-inner">
+                <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 text-left space-y-1.5 shadow-inner">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-amber-300 font-bold">🎯 Match Stake:</span>
-                    <span className="text-white font-black">{(incomingChallenge.stakeAmount || 0).toLocaleString()} UGX</span>
+                    <span className="text-white font-black">{(incomingChallenge.stakeAmount || 0).toLocaleString()} UGX each</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-emerald-400 font-bold">🏆 Winner Prize Pot:</span>
-                    <span className="text-emerald-300 font-black">{((incomingChallenge.stakeAmount || 0) * 2).toLocaleString()} UGX</span>
+                    <span className="text-slate-300 font-bold">💰 Total Prize Pot:</span>
+                    <span className="text-white font-black">{((incomingChallenge.stakeAmount || 0) * 2).toLocaleString()} UGX</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>⚡ Service Fee:</span>
+                    <span className="font-semibold text-amber-400">-{getGameServiceFee(incomingChallenge.stakeAmount || 0).toLocaleString()} UGX</span>
+                  </div>
+                  <div className="pt-1 border-t border-amber-500/30 flex items-center justify-between text-xs text-emerald-300 font-black">
+                    <span>🏆 Winner Payout:</span>
+                    <span className="text-emerald-400 font-black text-sm">+{getNetGameWinnings(incomingChallenge.stakeAmount || 0).toLocaleString()} UGX</span>
                   </div>
                   {(currentUser?.walletBalance || 0) < (incomingChallenge.stakeAmount || 0) && (
-                    <p className="text-[10px] text-rose-400 font-bold pt-1">
+                    <p className="text-[10px] text-rose-400 font-bold pt-1 border-t border-rose-900/50">
                       ⚠️ Insufficient balance ({(currentUser?.walletBalance || 0).toLocaleString()} UGX). Accepting will prompt deposit.
                     </p>
                   )}

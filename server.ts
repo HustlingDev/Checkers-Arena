@@ -1630,13 +1630,13 @@ function executeBotTurn(room: GameRoom) {
 function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
   if (stakeAmount === 200) return 30;
-  if (stakeAmount === 500) return 30;
-  if (stakeAmount === 1000) return 55;
-  if (stakeAmount === 2000) return 150;
-  if (stakeAmount === 5000) return 300;
-  if (stakeAmount === 10000) return 550;
-  if (stakeAmount === 20000) return 1000;
-  return Math.round(stakeAmount * 0.05);
+  if (stakeAmount === 500) return 50;
+  if (stakeAmount === 1000) return 100;
+  if (stakeAmount === 2000) return 400;
+  if (stakeAmount === 5000) return 1000;
+  if (stakeAmount === 10000) return 2000;
+  if (stakeAmount === 20000) return 4000;
+  return Math.round(stakeAmount * 0.20);
 }
 
 // Helper: Handle game end statistics, pot distribution & Elo update
