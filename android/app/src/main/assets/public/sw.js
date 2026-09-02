@@ -1,5 +1,5 @@
 // Service Worker for Checkers Online Arena
-const CACHE_NAME = 'checkers-arena-v2';
+const CACHE_NAME = 'checkers-arena-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
