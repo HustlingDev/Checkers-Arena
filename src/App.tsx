@@ -124,13 +124,13 @@ export default function App() {
     if (!currentUser.welcomeBonusClaimed) {
       const updatedUser: UserProfile = {
         ...currentUser,
-        walletBalance: (currentUser.walletBalance !== undefined && currentUser.walletBalance > 0) ? currentUser.walletBalance : 500,
+        walletBalance: (currentUser.walletBalance !== undefined && currentUser.walletBalance > 0) ? currentUser.walletBalance : 200,
         welcomeBonusClaimed: true,
       };
       setCurrentUser(updatedUser);
       localStorage.setItem('checkers_user_profile', JSON.stringify(updatedUser));
       saveUserProfileToFirestore(updatedUser).catch(() => {});
-      showNotification('🎁 Welcome Bonus: 500 UGX added to your new account!', 'info', 6000);
+      showNotification('🎁 Welcome Bonus: 200 UGX added to your new account!', 'info', 6000);
     }
   }, [currentUser?.id, currentUser?.isGuest, currentUser?.welcomeBonusClaimed]);
 
@@ -1442,7 +1442,6 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={handleAuthModalClose}
         onLoginSuccess={handleAuthSuccess}
-        defaultEmail="hackerug06@gmail.com"
         allowDismiss={true}
       />
 

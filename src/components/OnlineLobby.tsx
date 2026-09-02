@@ -234,7 +234,7 @@ export const OnlineLobby: React.FC<OnlineLobbyProps> = ({
   return (
     <div
       id="online-lobby-container"
-      className="w-full max-w-7xl mx-auto h-[calc(100vh-64px)] max-h-[calc(100vh-64px)] p-2 sm:p-3.5 flex flex-col justify-between gap-2 overflow-hidden select-none"
+      className="w-full max-w-7xl mx-auto h-full max-h-full p-2 sm:p-3 flex flex-col justify-between gap-1.5 sm:gap-2 overflow-hidden select-none"
     >
       {/* 1. TOP HEADER & PROMINENT DEPOSIT BAR (Optimized for Landscape) */}
       <div
@@ -412,10 +412,10 @@ export const OnlineLobby: React.FC<OnlineLobbyProps> = ({
                     key={tier.amount}
                     id={`stake-card-${tier.amount}`}
                     onClick={() => handleEnterStakeSection(tier.amount)}
-                    className={`relative group bg-gradient-to-br ${tier.gradient} border ${tier.borderColor} rounded-xl p-2.5 flex flex-col justify-between gap-2 shadow hover:shadow-lg transition duration-150 cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.98] min-h-[140px] overflow-hidden`}
+                    className={`relative group bg-gradient-to-br ${tier.gradient} border ${tier.borderColor} rounded-xl p-2 sm:p-2.5 flex flex-col justify-between gap-1.5 sm:gap-2 shadow hover:shadow-lg transition duration-150 cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.98] min-h-[125px] sm:min-h-[135px] overflow-hidden`}
                   >
                     {/* Visual Card Watermark */}
-                    <div className="absolute -right-1 bottom-6 pointer-events-none select-none opacity-[0.08] group-hover:opacity-[0.14] text-[18px] sm:text-[22px] font-black uppercase tracking-widest leading-none z-0 transition-opacity transform -rotate-12 text-white">
+                    <div className="absolute -right-1 bottom-4 pointer-events-none select-none opacity-[0.14] group-hover:opacity-[0.24] text-[16px] sm:text-[20px] font-black italic uppercase tracking-wider leading-none z-0 transition-opacity transform -rotate-12 text-white">
                       {tier.watermark}
                     </div>
 

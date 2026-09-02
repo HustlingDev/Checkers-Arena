@@ -199,7 +199,7 @@ function createProfileFromFirebaseUser(user: any): UserProfile {
     termsAccepted: true,
     elo: 1200,
     rating: 1200,
-    walletBalance: 500,
+    walletBalance: 200,
     welcomeBonusClaimed: true,
     status: 'online',
     createdAt: Date.now(),

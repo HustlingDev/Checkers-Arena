@@ -58,17 +58,6 @@ export interface WalletTransaction {
   timestamp: number;
 }
 
-export interface StakeTier {
-  id: string;
-  name: string;
-  amount: number;
-  label: string;
-  badge: string;
-  description: string;
-  category?: string;
-  isFree?: boolean;
-}
-
 export function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
   if (stakeAmount === 200) return 30;
