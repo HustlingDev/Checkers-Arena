@@ -31,6 +31,7 @@ import {
   getUserProfileFromFirestore,
   deleteUserAccount,
   logOutUser,
+  updateUserPhoneNumber,
   sendChallengeToFirestore,
   subscribeToIncomingChallenges,
   respondToChallengeInFirestore,
@@ -633,32 +634,8 @@ export default function App() {
   };
 
   const handleAuthModalClose = () => {
-    setIsAuthModalOpen(false);
-    if (!currentUser) {
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const guestProfile: UserProfile = {
-        id: guestId,
-        username: `Guest-${Math.floor(100 + Math.random() * 900)}`,
-        avatarId: 'avatar-crown',
-        rating: 1200,
-        elo: 1200,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-        walletBalance: 500,
-        welcomeBonusClaimed: true,
-        status: 'online',
-        isOnline: true,
-        isGuest: true,
-        createdAt: Date.now(),
-      };
-      setCurrentUser(guestProfile);
-      localStorage.setItem('checkers_user_profile', JSON.stringify(guestProfile));
-      sendWs('auth:login', {
-        username: guestProfile.username,
-        avatarId: guestProfile.avatarId,
-        existingUserId: guestProfile.id,
-      });
+    if (currentUser) {
+      setIsAuthModalOpen(false);
     }
   };
 
@@ -1306,15 +1283,39 @@ export default function App() {
 
   const handleDeleteAccount = async () => {
     if (!currentUser) return;
+    const uidToDelete = currentUser.id;
     try {
       setIsSettingsModalOpen(false);
-      await deleteUserAccount(currentUser.id);
+      sendWs('user:delete_account', { userId: uidToDelete });
+      await deleteUserAccount(uidToDelete);
+    } catch (e: any) {
+      console.warn('Delete account warning:', e);
+    } finally {
+      localStorage.removeItem('checkers_user_profile');
+      sessionStorage.clear();
       setCurrentUser(null);
       setIsAuthModalOpen(true);
       showNotification('Account permanently deleted', 'info');
-    } catch (e: any) {
-      console.error('Delete account error:', e);
-      showNotification('Failed to delete account. Please try again.', 'error');
+    }
+  };
+
+  const handleUpdatePhoneNumber = async (newPhone: string): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser) return { success: false, message: 'Please sign in first.' };
+    try {
+      const result = await updateUserPhoneNumber(currentUser.id, newPhone);
+      if (result.success && result.updatedProfile) {
+        setCurrentUser(result.updatedProfile);
+        localStorage.setItem('checkers_user_profile', JSON.stringify(result.updatedProfile));
+        sendWs('user:update_phone', {
+          phoneNumber: result.updatedProfile.phoneNumber,
+          normalizedPhone: result.updatedProfile.normalizedPhone,
+        });
+        showNotification(result.message, 'info', 6000);
+        return { success: true, message: result.message };
+      }
+      return { success: false, message: result.message || 'Failed to update phone number.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Error updating phone number.' };
     }
   };
 
@@ -1442,19 +1443,21 @@ export default function App() {
         isOpen={isAuthModalOpen}
         onClose={handleAuthModalClose}
         onLoginSuccess={handleAuthSuccess}
-        allowDismiss={true}
+        allowDismiss={Boolean(currentUser && !currentUser.isGuest)}
       />
 
-      {/* Settings Modal (Theme, Audio, Logout, Account Deletion Confirmation) */}
+      {/* Settings Modal (Theme, Audio, Logout, Account Deletion Confirmation, Uganda Phone Number Management) */}
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        currentUser={currentUser}
         currentTheme={boardTheme}
         onChangeTheme={handleChangeTheme}
         soundEnabled={soundEnabled}
         onToggleSound={handleToggleSound}
         onLogout={handleLogout}
         onDeleteAccount={handleDeleteAccount}
+        onUpdatePhoneNumber={handleUpdatePhoneNumber}
       />
 
       {currentUser && (

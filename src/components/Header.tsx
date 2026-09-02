@@ -74,16 +74,6 @@ export const Header: React.FC<HeaderProps> = ({
           {/* User Data / Profile Icon or Create Account */}
           {currentUser ? (
             <div className="flex items-center gap-1.5">
-              {currentUser.isGuest && (
-                <button
-                  onClick={onOpenAuth}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-bold transition"
-                  title="Create a permanent account"
-                >
-                  <UserPlus className="w-3 h-3" />
-                  <span>Sign Up</span>
-                </button>
-              )}
               <button
                 onClick={onOpenProfile}
                 className="flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-xl bg-gradient-to-r from-slate-800 to-slate-850 hover:from-slate-750 hover:to-slate-800 text-slate-100 border border-slate-700/80 transition shadow-sm active:scale-95"

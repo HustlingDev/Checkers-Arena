@@ -28,6 +28,7 @@ import {
 } from 'firebase/firestore';
 import { UserProfile, Challenge, GameRoom, ChatMessage, GamePlayer } from '../types';
 import { createInitialBoard } from './checkersEngine';
+import { validateUgandaPhoneNumber } from './ugandaPhone';
 
 // Web App's Firebase Configuration
 export const firebaseConfig = {
@@ -57,6 +58,120 @@ export const db = firestoreDb;
 export function normalizePhoneNumber(phone: string): string {
   if (!phone) return '';
   return phone.replace(/[\s\-\(\)\.]/g, '').trim();
+}
+
+// Check if a phone number was ever used for a welcome bonus claim in Firestore registry
+export async function isBonusClaimedForPhone(phone: string): Promise<boolean> {
+  try {
+    const val = validateUgandaPhoneNumber(phone);
+    const key = val.isValid ? val.normalized : normalizePhoneNumber(phone);
+    if (!key || key.length < 6) return false;
+
+    // Check claimed_bonus_phones collection
+    const bonusDocRef = doc(db, 'claimed_bonus_phones', key);
+    const snap = await getDoc(bonusDocRef);
+    if (snap.exists()) {
+      return true;
+    }
+
+    // Secondary check: look in users collection if any user previously had this normalized phone
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('normalizedPhone', '==', key));
+    const userSnap = await getDocs(q);
+    if (!userSnap.empty) {
+      for (const d of userSnap.docs) {
+        const u = d.data() as UserProfile;
+        if (u.welcomeBonusClaimed === true) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (err) {
+    console.warn('isBonusClaimedForPhone check error:', err);
+    return false;
+  }
+}
+
+// Record that a phone number has claimed the welcome bonus
+export async function recordBonusClaimedForPhone(phone: string, userId: string): Promise<void> {
+  try {
+    const val = validateUgandaPhoneNumber(phone);
+    const key = val.isValid ? val.normalized : normalizePhoneNumber(phone);
+    if (!key || key.length < 6) return;
+
+    const bonusDocRef = doc(db, 'claimed_bonus_phones', key);
+    await setDoc(bonusDocRef, {
+      normalizedPhone: key,
+      originalPhone: phone,
+      claimedByUserId: userId,
+      claimedAt: Date.now(),
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+    console.log(`[Firestore] Welcome bonus phone ${key} marked as claimed.`);
+  } catch (err) {
+    console.warn('recordBonusClaimedForPhone error:', err);
+  }
+}
+
+// Update User Phone Number in Firestore with Uganda Validation & Bonus Eligibility Check
+export async function updateUserPhoneNumber(
+  userId: string,
+  rawPhone: string
+): Promise<{ success: boolean; message: string; updatedProfile?: UserProfile; bonusDisqualified?: boolean }> {
+  try {
+    const validation = validateUgandaPhoneNumber(rawPhone);
+    if (!validation.isValid) {
+      return { success: false, message: validation.error || 'Invalid Ugandan phone number.' };
+    }
+
+    // Check if phone number is in use by another active account
+    const phoneTaken = await isPhoneNumberTaken(validation.formatted, userId);
+    if (phoneTaken) {
+      return { success: false, message: 'This phone number is already registered to another active account.' };
+    }
+
+    // Check if this phone number was ever used for a welcome bonus
+    const alreadyClaimed = await isBonusClaimedForPhone(validation.normalized);
+
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      return { success: false, message: 'User profile not found.' };
+    }
+
+    const currentProfile = userSnap.data() as UserProfile;
+    const shouldRevokeBonus = alreadyClaimed && currentProfile.walletBalance === 200 && currentProfile.gamesPlayed === 0;
+
+    const updatedProfile: UserProfile = {
+      ...currentProfile,
+      phoneNumber: validation.formatted,
+      normalizedPhone: validation.normalized,
+      walletBalance: shouldRevokeBonus ? 0 : currentProfile.walletBalance,
+      welcomeBonusClaimed: true,
+      lastActiveTimestamp: Date.now(),
+    };
+
+    await saveUserProfileToFirestore(updatedProfile);
+    localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
+
+    // Mark in bonus registry
+    await recordBonusClaimedForPhone(validation.normalized, userId);
+
+    const bonusMsg = alreadyClaimed
+      ? `Phone linked: ${validation.formatted} (${validation.operator}). Note: This phone previously received a welcome bonus.`
+      : `Phone updated: ${validation.formatted} (${validation.operator})!`;
+
+    return {
+      success: true,
+      message: bonusMsg,
+      updatedProfile,
+      bonusDisqualified: alreadyClaimed,
+    };
+  } catch (err: any) {
+    console.error('updateUserPhoneNumber error:', err);
+    return { success: false, message: err?.message || 'Failed to update phone number.' };
+  }
 }
 
 // Check if a phone number is already registered to another account
@@ -756,23 +871,42 @@ export function subscribeToGameChat(roomId: string, callback: (messages: ChatMes
 // ==========================================
 
 export async function deleteUserAccount(userId: string): Promise<void> {
+  // 1. Delete user document from Firestore
   try {
-    const userRef = doc(db, 'users', userId);
-    await deleteDoc(userRef);
+    if (userId) {
+      const userRef = doc(db, 'users', userId);
+      await deleteDoc(userRef);
+      console.log(`[Firestore] User ${userId} document deleted.`);
+    }
   } catch (e) {
-    console.warn('deleteDoc user error:', e);
+    console.warn('deleteDoc user warning:', e);
   }
 
+  // 2. Try deleting from Firebase Auth (will safely ignore if requires recent login)
   if (auth.currentUser) {
     try {
       await auth.currentUser.delete();
-    } catch (e) {
-      // ignore
+      console.log('[Auth] Firebase Auth user deleted successfully.');
+    } catch (e: any) {
+      console.warn('auth delete warning (non-fatal):', e?.message || e);
     }
   }
 
-  localStorage.removeItem('checkers_user_profile');
-  await signOut(auth);
+  // 3. Clear all browser persistence & sign out
+  try {
+    localStorage.removeItem('checkers_user_profile');
+    localStorage.removeItem('checkers_google_user');
+    localStorage.removeItem('checkers_board_theme');
+    sessionStorage.clear();
+  } catch (e) {
+    // ignore
+  }
+
+  try {
+    await signOut(auth);
+  } catch (e) {
+    // ignore
+  }
 }
 
 // Logout
@@ -797,8 +931,13 @@ export async function logOutUser(): Promise<void> {
   } catch (e) {
     // ignore
   }
-  localStorage.removeItem('checkers_user_profile');
-  await signOut(auth);
+  try {
+    localStorage.removeItem('checkers_user_profile');
+    sessionStorage.clear();
+    await signOut(auth);
+  } catch (e) {
+    // ignore
+  }
 }
 
 

@@ -8,6 +8,11 @@ service cloud.firestore {
       allow read, write, create, update, delete: if true;
     }
 
+    // Claimed bonus phones registry for preventing welcome bonus duplicate abuse across accounts
+    match /claimed_bonus_phones/{phoneId} {
+      allow read, write, create, update, delete: if true;
+    }
+
     // Direct Challenge requests between players
     match /challenges/{challengeId} {
       allow read, write, create, update, delete: if true;

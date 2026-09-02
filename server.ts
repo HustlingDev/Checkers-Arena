@@ -711,18 +711,18 @@ wss.on('connection', (ws: WebSocket) => {
               losses: 0,
               draws: 0,
               rating: 1200,
-              walletBalance: 500,
+              walletBalance: 200,
               welcomeBonusClaimed: true,
               status: 'online',
               createdAt: Date.now(),
             };
 
-            // Record 500 UGX welcome bonus transaction
+            // Record 200 UGX welcome bonus transaction
             recordTransaction(
               targetId,
               'deposit',
-              500,
-              '🎁 Welcome Bonus Stake (500 UGX)'
+              200,
+              '🎁 Welcome Bonus Stake (200 UGX)'
             );
           }
 
@@ -788,6 +788,44 @@ wss.on('connection', (ws: WebSocket) => {
             })
           );
           broadcastPresence();
+          break;
+        }
+
+        case 'user:update_phone': {
+          if (!currentUserId) return;
+          const user = usersMap.get(currentUserId);
+          if (!user) return;
+          const { phoneNumber, normalizedPhone } = payload;
+          if (phoneNumber) {
+            user.phoneNumber = phoneNumber;
+            user.normalizedPhone = normalizedPhone;
+            usersMap.set(user.id, user);
+            persistUsers();
+            ws.send(
+              JSON.stringify({
+                type: 'user:profile_updated',
+                payload: { user },
+              })
+            );
+          }
+          break;
+        }
+
+        case 'user:delete_account': {
+          const targetId = payload?.userId || currentUserId;
+          if (targetId) {
+            usersMap.delete(targetId);
+            userSockets.delete(targetId);
+            persistUsers();
+            broadcastPresence();
+            ws.send(
+              JSON.stringify({
+                type: 'user:deleted_ack',
+                payload: { userId: targetId },
+              })
+            );
+          }
+          currentUserId = null;
           break;
         }
 
