@@ -338,7 +338,7 @@ function createProfileFromFirebaseUser(user: any): UserProfile {
   };
 }
 
-// Google Sign In (Native Google Play Services on Android APK, Web Popup on browser with seamless fallback)
+// Google Sign In (Native Google Play Services on Android APK, Web Popup on browser)
 export async function signInWithGoogle(rememberMe: boolean = true): Promise<UserProfile> {
   await setAuthRememberMe(rememberMe);
 
@@ -361,7 +361,7 @@ export async function signInWithGoogle(rememberMe: boolean = true): Promise<User
       const res = await signInWithCredential(auth, credential);
       user = res.user;
     } catch (nativeErr: any) {
-      console.warn('Native Google Auth failed, attempting browser popup fallback:', nativeErr);
+      console.error('Native Google Auth error:', nativeErr);
       const errMsg = nativeErr?.message || String(nativeErr || '');
       const isUserCancel =
         errMsg.includes('canceled') ||
@@ -373,21 +373,18 @@ export async function signInWithGoogle(rememberMe: boolean = true): Promise<User
         throw new Error('Sign in was canceled.');
       }
 
-      // Attempt web popup fallback inside WebView
-      try {
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        const result = await signInWithPopup(auth, provider);
-        user = result.user;
-      } catch (fallbackErr: any) {
-        console.error('Web fallback also failed:', fallbackErr);
-        if (errMsg.includes('10') || errMsg.includes('12500') || errMsg.includes('Something went wrong') || errMsg.includes('DEVELOPER_ERROR')) {
-          throw new Error(
-            'Google Sign-In configuration error (Developer Error 10). Please ensure your Android SHA-1 fingerprint is added in Firebase Console.'
-          );
-        }
-        throw new Error(fallbackErr?.message || nativeErr?.message || 'Google Sign-In failed. Please try again.');
+      if (
+        errMsg.includes('10') ||
+        errMsg.includes('12500') ||
+        errMsg.includes('Something went wrong') ||
+        errMsg.includes('DEVELOPER_ERROR')
+      ) {
+        throw new Error(
+          'Google Sign-In SHA-1 mismatch (Developer Error 10). Please ensure your APK signing SHA-1 fingerprint (A7:04:69:0C:99:1A:A3:6E:14:17:45:23:6A:6A:FE:16:AE:35:F1:70) is added to Firebase Console under Android app (com.checkers.arena).'
+        );
       }
+
+      throw new Error(errMsg || 'Google Sign-In failed on this device.');
     }
   } else {
     const provider = new GoogleAuthProvider();

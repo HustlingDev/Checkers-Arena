@@ -46,6 +46,7 @@ jobs:
       - name: Install dependencies and build web app
         run: |
           npm install --legacy-peer-deps
+          bash ./android/patch-google-auth.sh || true
           npm run build
           npx cap sync android || true
 
