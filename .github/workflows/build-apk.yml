@@ -66,30 +66,18 @@ jobs:
 
       - name: Ensure debug keystore
         run: |
+          echo "Restoring verified permanent debug keystore (SHA-1: A7:04:69:0C:99:1A:A3:6E:14:17:45:23:6A:6A:FE:16:AE:35:F1:70)..."
           if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
-            echo "Restoring keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
+            echo "Using keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
             echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ./debug.keystore
-            cp ./debug.keystore ./android/app/debug.keystore
-          fi
-          if [ -f "./android/app/debug.keystore" ] && [ ! -f "./debug.keystore" ]; then
+          elif [ -f "./android/app/debug.keystore" ]; then
             cp ./android/app/debug.keystore ./debug.keystore
+          elif [ ! -f "./debug.keystore" ]; then
+            cat << 'EOF' | base64 -d > ./debug.keystore
+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
+EOF
           fi
-          if [ -f "./debug.keystore" ] && [ ! -f "./android/app/debug.keystore" ]; then
-            cp ./debug.keystore ./android/app/debug.keystore
-          fi
-          if [ ! -f "./debug.keystore" ]; then
-            echo "Generating fallback debug keystore..."
-            keytool -genkey -v \
-              -keystore ./debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000
-            cp ./debug.keystore ./android/app/debug.keystore
-          fi
+          cp ./debug.keystore ./android/app/debug.keystore
           echo "Keystore confirmed at ./debug.keystore and ./android/app/debug.keystore"
           FINGERPRINTS=$(keytool -list -v -keystore ./debug.keystore -alias androiddebugkey -storepass android | grep -E "SHA1:|SHA256:")
           echo "$FINGERPRINTS"
