@@ -87,6 +87,11 @@ jobs:
           echo "Keystore confirmed at ./debug.keystore and ./android/app/debug.keystore"
           keytool -list -v -keystore ./debug.keystore -alias androiddebugkey -storepass android | grep -E "SHA1|SHA256" || true
 
+      - name: Install Android SDK 36
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+
       - name: Build debug APK
         run: |
           if ! unzip -t android/gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
