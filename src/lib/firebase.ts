@@ -380,7 +380,7 @@ export async function signInWithGoogle(rememberMe: boolean = true): Promise<User
         errMsg.includes('DEVELOPER_ERROR')
       ) {
         throw new Error(
-          'Google Sign-In SHA-1 mismatch (Developer Error 10). Please ensure your APK signing SHA-1 fingerprint (A7:04:69:0C:99:1A:A3:6E:14:17:45:23:6A:6A:FE:16:AE:35:F1:70) is added to Firebase Console under Android app (com.checkers.arena).'
+          'Google Sign-In configuration error (Developer Error 10). The APK must be rebuilt with the updated google-services.json so Google Play Services can verify the SHA-1 key.'
         );
       }
 
