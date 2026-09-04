@@ -4,4 +4,6 @@
     <string name="title_activity_main">Checkers Arena</string>
     <string name="package_name">com.checkers.arena</string>
     <string name="custom_url_scheme">com.checkers.arena</string>
+    <string name="server_client_id">726155928996-e6fadk0324f1tkbq40dp3ms8dmlsp9ra.apps.googleusercontent.com</string>
+    <string name="default_web_client_id">726155928996-e6fadk0324f1tkbq40dp3ms8dmlsp9ra.apps.googleusercontent.com</string>
 </resources>

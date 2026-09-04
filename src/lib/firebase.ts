@@ -308,9 +308,11 @@ export async function cleanUpAllGuestPlayersFromFirestore(): Promise<number> {
 
 // Helper to construct profile object from Firebase User
 function createProfileFromFirebaseUser(user: any): UserProfile {
-  const baseName = (user.displayName || user.email?.split('@')[0] || 'Player')
-    .replace(/[^a-zA-Z]/g, '');
-  const cleanUsername = baseName || 'MasterPlayer';
+  const emailPrefix = user.email ? user.email.split('@')[0] : '';
+  const rawName = user.displayName || emailPrefix || 'player';
+  // Keep lowercase letters only for username to match app conventions
+  const alphaOnly = rawName.toLowerCase().replace(/[^a-z]/g, '');
+  const cleanUsername = (alphaOnly.length >= 3 ? alphaOnly.slice(0, 15) : (alphaOnly + 'player')).slice(0, 15);
 
   return {
     id: user.uid,
@@ -336,30 +338,56 @@ function createProfileFromFirebaseUser(user: any): UserProfile {
   };
 }
 
-// Google Sign In (Native Google Play Services on Android APK, Web Popup on browser)
+// Google Sign In (Native Google Play Services on Android APK, Web Popup on browser with seamless fallback)
 export async function signInWithGoogle(rememberMe: boolean = true): Promise<UserProfile> {
   await setAuthRememberMe(rememberMe);
 
-  let user: any;
+  let user: any = null;
 
   if (Capacitor.isNativePlatform()) {
     try {
-      GoogleAuth.initialize({
+      await GoogleAuth.initialize({
         clientId: '726155928996-e6fadk0324f1tkbq40dp3ms8dmlsp9ra.apps.googleusercontent.com',
         scopes: ['profile', 'email'],
-        grantOfflineAccess: true,
+        grantOfflineAccess: false,
       });
+
       const googleUser = await GoogleAuth.signIn();
-      const idToken = googleUser.authentication?.idToken;
+      const idToken = googleUser?.authentication?.idToken || (googleUser as any)?.idToken;
       if (!idToken) {
-        throw new Error('Google Sign-In failed to retrieve authentication token.');
+        throw new Error('Google Sign-In did not return an ID token.');
       }
       const credential = GoogleAuthProvider.credential(idToken);
       const res = await signInWithCredential(auth, credential);
       user = res.user;
     } catch (nativeErr: any) {
-      console.warn('Native Google Auth error, falling back:', nativeErr);
-      throw nativeErr;
+      console.warn('Native Google Auth failed, attempting browser popup fallback:', nativeErr);
+      const errMsg = nativeErr?.message || String(nativeErr || '');
+      const isUserCancel =
+        errMsg.includes('canceled') ||
+        errMsg.includes('12501') ||
+        errMsg.includes('cancelled') ||
+        errMsg.includes('popup-closed-by-user');
+
+      if (isUserCancel) {
+        throw new Error('Sign in was canceled.');
+      }
+
+      // Attempt web popup fallback inside WebView
+      try {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await signInWithPopup(auth, provider);
+        user = result.user;
+      } catch (fallbackErr: any) {
+        console.error('Web fallback also failed:', fallbackErr);
+        if (errMsg.includes('10') || errMsg.includes('12500') || errMsg.includes('Something went wrong') || errMsg.includes('DEVELOPER_ERROR')) {
+          throw new Error(
+            'Google Sign-In configuration error (Developer Error 10). Please ensure your Android SHA-1 fingerprint is added in Firebase Console.'
+          );
+        }
+        throw new Error(fallbackErr?.message || nativeErr?.message || 'Google Sign-In failed. Please try again.');
+      }
     }
   } else {
     const provider = new GoogleAuthProvider();

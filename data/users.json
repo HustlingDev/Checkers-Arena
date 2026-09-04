@@ -1,1 +1,15 @@
-[]
+[
+  {
+    "id": "usr_1787520550187_u86ej",
+    "username": "King",
+    "avatarId": "avatar-crown",
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "rating": 1200,
+    "walletBalance": 200,
+    "welcomeBonusClaimed": true,
+    "status": "online",
+    "createdAt": 1788526055307
+  }
+]
