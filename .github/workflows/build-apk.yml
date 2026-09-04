@@ -45,7 +45,7 @@ jobs:
 
       - name: Install dependencies and build web app
         run: |
-          npm ci || npm install
+          npm install --legacy-peer-deps
           npm run build
           npx cap sync android || true
 
