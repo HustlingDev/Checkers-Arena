@@ -83,3 +83,26 @@ export function validateUgandaPhoneNumber(input: string): UgandaPhoneValidation 
     operator,
   };
 }
+
+export function formatUgandaPhone(raw: string): string {
+  if (!raw) return '';
+  let clean = raw.replace(/\D/g, '');
+  if (clean.startsWith('0')) {
+    clean = '256' + clean.substring(1);
+  } else if (clean.length === 9) {
+    clean = '256' + clean;
+  }
+  return clean.startsWith('+') ? clean : '+' + clean;
+}
+
+export function detectUgandaProvider(raw: string): 'mtn' | 'airtel' {
+  const clean = (raw || '').replace(/\D/g, '');
+  const local = clean.startsWith('256') ? clean.substring(3) : clean.startsWith('0') ? clean.substring(1) : clean;
+  if (local.startsWith('77') || local.startsWith('78') || local.startsWith('76') || local.startsWith('39')) {
+    return 'mtn';
+  }
+  if (local.startsWith('70') || local.startsWith('75') || local.startsWith('74')) {
+    return 'airtel';
+  }
+  return 'mtn';
+}

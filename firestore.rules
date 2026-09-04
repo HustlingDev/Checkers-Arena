@@ -8,6 +8,11 @@ service cloud.firestore {
       allow read, write, create, update, delete: if true;
     }
 
+    // Transactions collection rules for deposits, withdrawals, and stakes
+    match /transactions/{txId} {
+      allow read, write, create, update, delete: if true;
+    }
+
     // Claimed bonus phones registry for preventing welcome bonus duplicate abuse across accounts
     match /claimed_bonus_phones/{phoneId} {
       allow read, write, create, update, delete: if true;

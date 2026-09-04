@@ -34,8 +34,9 @@ import {
   serverTimestamp,
   onSnapshot,
   limit,
+  orderBy,
 } from 'firebase/firestore';
-import { UserProfile, Challenge, GameRoom, ChatMessage, GamePlayer } from '../types';
+import { UserProfile, Challenge, GameRoom, ChatMessage, GamePlayer, WalletTransaction } from '../types';
 import { createInitialBoard } from './checkersEngine';
 import { validateUgandaPhoneNumber } from './ugandaPhone';
 
@@ -1147,6 +1148,134 @@ export async function logOutUser(): Promise<void> {
     await signOut(auth);
   } catch (e) {
     // ignore
+  }
+}
+
+// -------------------------------------------------------------
+// WALLET TRANSACTIONS & BALANCE PERSISTENCE IN FIRESTORE
+// -------------------------------------------------------------
+
+export async function recordWalletTransactionInFirestore(tx: WalletTransaction): Promise<void> {
+  try {
+    const txRef = doc(db, 'transactions', tx.id);
+    await setDoc(txRef, {
+      ...tx,
+      createdAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Also cache locally for instant offline display
+    try {
+      const stored = localStorage.getItem(`checkers_tx_${tx.userId}`);
+      const list: WalletTransaction[] = stored ? JSON.parse(stored) : [];
+      const filtered = list.filter((item) => item.id !== tx.id);
+      filtered.unshift(tx);
+      localStorage.setItem(`checkers_tx_${tx.userId}`, JSON.stringify(filtered.slice(0, 50)));
+    } catch {
+      // ignore
+    }
+  } catch (err) {
+    console.warn('Failed to save transaction to Firestore:', err);
+  }
+}
+
+export async function getUserTransactionsFromFirestore(userId: string): Promise<WalletTransaction[]> {
+  try {
+    const txRef = collection(db, 'transactions');
+    const q = query(
+      txRef,
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc'),
+      limit(50)
+    );
+    const snap = await getDocs(q);
+    const results: WalletTransaction[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as any;
+      results.push({
+        id: d.id,
+        userId: data.userId || userId,
+        type: data.type || 'deposit',
+        amount: Number(data.amount) || 0,
+        currency: data.currency || 'UGX',
+        status: data.status || 'completed',
+        description: data.description || '',
+        reference: data.reference,
+        transactionReference: data.transactionReference,
+        pesajetTransactionId: data.pesajetTransactionId,
+        timestamp: data.timestamp || Date.now(),
+      });
+    });
+
+    if (results.length > 0) {
+      try {
+        localStorage.setItem(`checkers_tx_${userId}`, JSON.stringify(results));
+      } catch {
+        // ignore
+      }
+      return results;
+    }
+  } catch (err) {
+    console.warn('Querying transactions with orderBy failed, trying fallback without index:', err);
+    try {
+      const txRef = collection(db, 'transactions');
+      const qFallback = query(txRef, where('userId', '==', userId), limit(50));
+      const snap = await getDocs(qFallback);
+      const results: WalletTransaction[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        results.push({
+          id: d.id,
+          userId: data.userId || userId,
+          type: data.type || 'deposit',
+          amount: Number(data.amount) || 0,
+          currency: data.currency || 'UGX',
+          status: data.status || 'completed',
+          description: data.description || '',
+          reference: data.reference,
+          transactionReference: data.transactionReference,
+          pesajetTransactionId: data.pesajetTransactionId,
+          timestamp: data.timestamp || Date.now(),
+        });
+      });
+      results.sort((a, b) => b.timestamp - a.timestamp);
+      return results;
+    } catch (e2) {
+      console.warn('Fallback query also failed, using local storage:', e2);
+    }
+  }
+
+  try {
+    const stored = localStorage.getItem(`checkers_tx_${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function updateUserWalletBalanceInFirestore(
+  userId: string,
+  newBalance: number,
+  deltaStats?: { totalWonDelta?: number; totalStakedDelta?: number }
+): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const updates: Record<string, any> = {
+      walletBalance: Math.max(0, newBalance),
+      lastActiveTimestamp: Date.now(),
+    };
+    if (deltaStats?.totalWonDelta) {
+      const currentDoc = await getDoc(userRef);
+      const currentWon = currentDoc.exists() ? currentDoc.data().totalWon || 0 : 0;
+      updates.totalWon = currentWon + deltaStats.totalWonDelta;
+    }
+    if (deltaStats?.totalStakedDelta) {
+      const currentDoc = await getDoc(userRef);
+      const currentStaked = currentDoc.exists() ? currentDoc.data().totalStaked || 0 : 0;
+      updates.totalStaked = currentStaked + deltaStats.totalStakedDelta;
+    }
+    await updateDoc(userRef, updates);
+  } catch (err) {
+    console.warn('Error updating user walletBalance in Firestore:', err);
   }
 }
 

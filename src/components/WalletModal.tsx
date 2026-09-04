@@ -3,6 +3,13 @@ import { UserProfile, STAKE_TIERS, WalletTransaction } from '../types';
 import { apiFetchJson } from '../lib/api';
 import { saveUserProfileToFirestore } from '../lib/firebase';
 import {
+  initiateMobileMoneyDeposit,
+  verifyMobileMoneyStatus,
+  withdrawMobileMoney,
+  fetchUserTransactions,
+  resetUserBalance,
+} from '../lib/paymentService';
+import {
   Wallet,
   ArrowUpRight,
   ArrowDownLeft,
@@ -120,9 +127,9 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const fetchTransactions = async () => {
     setTransactionsLoading(true);
     try {
-      const res = await apiFetchJson(`/api/wallet/transactions?userId=${currentUser.id}`);
-      if (res.ok && res.data && res.data.success && Array.isArray(res.data.transactions)) {
-        setTransactions(res.data.transactions);
+      const list = await fetchUserTransactions(currentUser.id);
+      if (Array.isArray(list)) {
+        setTransactions(list);
       }
     } catch (e) {
       console.error('Failed to fetch transactions', e);
@@ -135,22 +142,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const handleResetSandboxBalance = async () => {
     setResettingBalance(true);
     try {
-      await apiFetchJson('/api/wallet/reset-balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id }),
-      });
-
-      const updatedProfile: UserProfile = {
-        ...currentUser,
-        walletBalance: 0,
-        totalWon: 0,
-        totalStaked: 0,
-      };
-      await saveUserProfileToFirestore(updatedProfile);
-      localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
-      localStorage.setItem('checkers_sandbox_cleaned_v2', 'true');
-
+      await resetUserBalance(currentUser.id, currentUser);
       onBalanceUpdated(0);
       setTransactions([]);
       setStatusMessage({
@@ -190,31 +182,27 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     setStatusMessage({ type: 'info', text: 'Initiating Mobile Money deposit prompt...' });
 
     try {
-      const res = await apiFetchJson('/api/pesajet/initiate-deposit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          amount: effectiveDepositAmount,
-          phoneNumber: effectivePhoneNumber,
-          provider,
-          description: `Checkers Arena Deposit (${effectiveDepositAmount.toLocaleString()} UGX)`,
-        }),
+      const result = await initiateMobileMoneyDeposit({
+        userId: currentUser.id,
+        amount: effectiveDepositAmount,
+        phoneNumber: effectivePhoneNumber,
+        provider,
+        currentUser,
+        description: `Checkers Arena Deposit (${effectiveDepositAmount.toLocaleString()} UGX)`,
       });
 
-      const data = res.data;
-      if (!res.ok || !data || !data.success) {
-        throw new Error(data?.message || 'Failed to initiate deposit. Please try again.');
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to initiate deposit. Please try again.');
       }
 
-      const txId = data.transactionId;
-      const ref = data.reference;
-      setPendingPromptTxId(txId);
-      setPendingPromptRef(ref);
+      const txId = result.transactionId;
+      const ref = result.reference;
+      setPendingPromptTxId(txId || null);
+      setPendingPromptRef(ref || null);
 
       setStatusMessage({
         type: 'info',
-        text: `PIN Prompt sent to ${effectivePhoneNumber}! Please enter your Mobile Money PIN on your phone.`,
+        text: result.message || `PIN Prompt sent to ${effectivePhoneNumber}! Please enter your Mobile Money PIN on your phone.`,
       });
 
       // Start automatic polling every 3.5 seconds
@@ -246,33 +234,40 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   ): Promise<boolean> => {
     if (showFeedback) setIsVerifying(true);
     try {
-      const url = `/api/pesajet/verify-status?userId=${currentUser.id}&transactionId=${encodeURIComponent(
-        transactionId || ''
-      )}&reference=${encodeURIComponent(reference || '')}`;
-      const res = await apiFetchJson(url);
-      const data = res.data;
+      const result = await verifyMobileMoneyStatus({
+        transactionId,
+        reference,
+        userId: currentUser.id,
+        amount: effectiveDepositAmount,
+        currentUser,
+      });
 
-      if (data && (data.completed || data.status === 'COMPLETED' || data.status === 'SUCCESSFUL')) {
-        const newBal = data.walletBalance || ((currentUser.walletBalance || 0) + effectiveDepositAmount);
+      if (result.completed) {
+        const newBal = result.walletBalance !== undefined ? result.walletBalance : ((currentUser.walletBalance || 0) + effectiveDepositAmount);
         setStatusMessage({
           type: 'success',
-          text: `Payment Confirmed! +${effectiveDepositAmount.toLocaleString()} UGX credited to your wallet.`,
+          text: result.message || `Payment Confirmed! +${effectiveDepositAmount.toLocaleString()} UGX credited to your wallet.`,
         });
         onBalanceUpdated(newBal);
-
-        const updatedProf: UserProfile = { ...currentUser, walletBalance: newBal };
-        saveUserProfileToFirestore(updatedProf).catch(() => {});
-        localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProf));
 
         fetchTransactions();
         setPendingPromptTxId(null);
         setPendingPromptRef(null);
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         return true;
+      } else if (result.failed) {
+        setStatusMessage({
+          type: 'error',
+          text: result.message || 'Payment was declined or cancelled on mobile device.',
+        });
+        setPendingPromptTxId(null);
+        setPendingPromptRef(null);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        return false;
       } else if (showFeedback) {
         setStatusMessage({
           type: 'info',
-          text: 'Payment is pending. Please check your phone screen to approve with your PIN.',
+          text: result.message || 'Payment is pending. Please check your phone screen to approve with your PIN.',
         });
       }
       return false;
@@ -304,32 +299,23 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
     setLoading(true);
     try {
-      const res = await apiFetchJson('/api/wallet/withdraw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          amount: amt,
-          phoneNumber: effectivePhoneNumber,
-          provider,
-        }),
+      const result = await withdrawMobileMoney({
+        userId: currentUser.id,
+        amount: amt,
+        phoneNumber: effectivePhoneNumber,
+        provider,
+        currentUser,
       });
-      const data = res.data;
-      if (res.ok && data && data.success) {
-        const newBal = data.walletBalance;
+
+      if (result.success) {
+        onBalanceUpdated(result.walletBalance);
         setStatusMessage({
           type: 'success',
-          text: data.message || `Cashout of ${amt.toLocaleString()} UGX initiated to ${effectivePhoneNumber}!`,
+          text: result.message,
         });
-        onBalanceUpdated(newBal);
-
-        const updatedProf: UserProfile = { ...currentUser, walletBalance: newBal };
-        saveUserProfileToFirestore(updatedProf).catch(() => {});
-        localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProf));
-
         fetchTransactions();
       } else {
-        setStatusMessage({ type: 'error', text: data?.message || 'Cashout failed. Please check your balance.' });
+        setStatusMessage({ type: 'error', text: result.message || 'Cashout failed. Please check your balance.' });
       }
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message || 'Cashout failed. Please try again.' });

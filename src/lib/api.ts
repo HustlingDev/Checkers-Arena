@@ -82,6 +82,20 @@ export const apiFetchJson = async <T = any>(
       clearTimeout(timeoutId);
 
       const text = await res.text();
+      const contentType = res.headers.get('content-type') || '';
+      const isHtml =
+        contentType.includes('text/html') ||
+        text.trim().startsWith('<!DOCTYPE') ||
+        text.trim().startsWith('<html') ||
+        text.includes('<div id="root">');
+
+      if (isHtml) {
+        // This is an SPA fallback index.html or local webview page, NOT a backend JSON API response
+        console.warn(`apiFetchJson received HTML page from ${fullUrl}, skipping to next endpoint...`);
+        lastErrorMsg = 'Endpoint returned HTML instead of API JSON response.';
+        continue;
+      }
+
       try {
         const json = JSON.parse(text);
         // If we succeeded in reaching an endpoint, save it as preferred if it was a candidate
@@ -94,14 +108,9 @@ export const apiFetchJson = async <T = any>(
         }
         return { ok: res.ok, status: res.status, data: json };
       } catch {
-        return {
-          ok: false,
-          status: res.status,
-          data: {
-            success: false,
-            message: text && text.length < 200 ? text : `Server error (${res.status})`,
-          } as any,
-        };
+        // Non-JSON response
+        lastErrorMsg = text && text.length < 150 ? text : `Server returned invalid data format (${res.status})`;
+        continue;
       }
     } catch (networkErr: any) {
       console.warn(`apiFetchJson failed on ${fullUrl}:`, networkErr?.message || networkErr);
