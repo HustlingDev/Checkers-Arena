@@ -89,6 +89,10 @@ jobs:
 
       - name: Build debug APK
         run: |
+          if ! unzip -t android/gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+            echo "Repairing gradle-wrapper.jar..."
+            curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.14.3/gradle/wrapper/gradle-wrapper.jar -o android/gradle/wrapper/gradle-wrapper.jar
+          fi
           chmod +x android/gradlew
           cd android
           ./gradlew assembleDebug --stacktrace --no-daemon
