@@ -91,6 +91,7 @@ jobs:
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           find . -name "*.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
+          find node_modules -name "build.gradle" -exec sed -i "s/'1.17.0'/'1.15.0'/g; s/'1.11.0'/'1.9.3'/g; s/'1.8.9'/'1.8.5'/g; s/'1.7.1'/'1.7.0'/g; s/'1.14.0'/'1.12.1'/g" {} + || true
 
       - name: Build debug APK
         run: |
@@ -100,7 +101,7 @@ jobs:
           fi
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug -x checkDebugAarMetadata -x checkReleaseAarMetadata --no-daemon
+          ./gradlew assembleDebug --no-daemon
 
       - name: Verify debug APK
         run: |

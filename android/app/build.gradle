@@ -76,14 +76,3 @@ try {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
 
-tasks.whenTaskAdded { task ->
-    if (task.name.contains("AarMetadata")) {
-        task.enabled = false
-    }
-}
-afterEvaluate {
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
-    }
-}
-

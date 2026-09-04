@@ -32,10 +32,24 @@ allprojects {
             force 'androidx.fragment:fragment-ktx:1.8.5'
         }
     }
-    tasks.whenTaskAdded { task ->
-        if (task.name.contains("AarMetadata")) {
-            task.enabled = false
-        }
+}
+
+subprojects {
+    project.ext {
+        compileSdkVersion = rootProject.ext.compileSdkVersion
+        targetSdkVersion = rootProject.ext.targetSdkVersion
+        minSdkVersion = rootProject.ext.minSdkVersion
+        androidxActivityVersion = rootProject.ext.androidxActivityVersion
+        androidxAppCompatVersion = rootProject.ext.androidxAppCompatVersion
+        androidxCoordinatorLayoutVersion = rootProject.ext.androidxCoordinatorLayoutVersion
+        androidxCoreVersion = rootProject.ext.androidxCoreVersion
+        androidxFragmentVersion = rootProject.ext.androidxFragmentVersion
+        coreSplashScreenVersion = rootProject.ext.coreSplashScreenVersion
+        androidxWebkitVersion = rootProject.ext.androidxWebkitVersion
+        junitVersion = rootProject.ext.junitVersion
+        androidxJunitVersion = rootProject.ext.androidxJunitVersion
+        androidxEspressoCoreVersion = rootProject.ext.androidxEspressoCoreVersion
+        cordovaAndroidVersion = rootProject.ext.cordovaAndroidVersion
     }
 }
 
