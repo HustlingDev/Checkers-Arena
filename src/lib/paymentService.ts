@@ -9,7 +9,7 @@ import {
   updateUserWalletBalanceInFirestore,
 } from './firebase';
 import { UserProfile, WalletTransaction } from '../types';
-import { formatUgandaPhone, detectUgandaProvider } from './ugandaPhone';
+import { formatUgandaPhone, detectUgandaProvider, sanitizeMomoDescription } from './ugandaPhone';
 
 const PESAJET_PUBLIC_KEY = 'pk_f89be8bd38a605a5eccb68d5719362410e8235e0a9925f20';
 const PESAJET_BASE_URL = 'https://payments.pesajet.com/api/v1';
@@ -57,6 +57,21 @@ export interface WithdrawResult {
 }
 
 /**
+ * Clean up provider error messages to be clear and actionable
+ */
+function friendlyPaymentError(rawError: string): string {
+  if (!rawError) return 'Payment prompt could not be initiated. Please verify your phone number and try again.';
+  const lower = rawError.toLowerCase();
+  if (lower.includes('unknown mtn api error') || lower.includes('mtn api error')) {
+    return 'MTN Mobile Money was unable to reach your phone. Please ensure your SIM has active signal, is not engaged in another USSD session, and try again.';
+  }
+  if (lower.includes('airtel') && (lower.includes('error') || lower.includes('failed'))) {
+    return 'Airtel Money prompt could not be sent. Please check your phone signal and try again.';
+  }
+  return rawError;
+}
+
+/**
  * Initiate Mobile Money Deposit (Collection prompt sent to player's phone)
  */
 export async function initiateMobileMoneyDeposit(
@@ -66,6 +81,7 @@ export async function initiateMobileMoneyDeposit(
   const detectedProvider = params.provider || detectUgandaProvider(params.phoneNumber);
   const reference = `CHK_DEP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
   const idempotencyKey = `dep-${params.userId}-${Date.now()}`;
+  const safeDescription = sanitizeMomoDescription(params.description || `Deposit ${params.amount} UGX`);
 
   // 1. Try Backend API first (when running on Web with Express active)
   try {
@@ -78,7 +94,7 @@ export async function initiateMobileMoneyDeposit(
         currency: 'UGX',
         phoneNumber: formattedPhone,
         provider: detectedProvider,
-        description: params.description || `Checkers Arena Deposit (${params.amount.toLocaleString()} UGX)`,
+        description: safeDescription,
       }),
     });
 
@@ -91,6 +107,8 @@ export async function initiateMobileMoneyDeposit(
         status: backendRes.data.status || 'PENDING',
         message: backendRes.data.message || `PIN Prompt sent to ${formattedPhone}! Please enter your Mobile Money PIN on your phone.`,
       };
+    } else if (backendRes.data && backendRes.data.message) {
+      console.warn('[PaymentService] Backend returned error:', backendRes.data.message);
     }
   } catch (err) {
     console.warn('[PaymentService] Backend proxy call failed, using direct PesaJet API fallback:', err);
@@ -106,7 +124,7 @@ export async function initiateMobileMoneyDeposit(
       provider: detectedProvider,
       reference,
       idempotencyKey,
-      description: params.description || `Checkers Arena Deposit (${params.amount.toLocaleString()} UGX)`,
+      description: safeDescription,
     };
 
     console.log('[PaymentService] Sending direct collection to PesaJet:', directPayload);
@@ -129,8 +147,8 @@ export async function initiateMobileMoneyDeposit(
     }
 
     if (!response.ok) {
-      const errorMsg = data?.message || data?.error || `Payment gateway rejected prompt (HTTP ${response.status})`;
-      throw new Error(errorMsg);
+      const rawErrorMsg = data?.message || data?.error || `Payment gateway rejected prompt (HTTP ${response.status})`;
+      throw new Error(friendlyPaymentError(rawErrorMsg));
     }
 
     const txId = data.transactionId || data.id || data.data?.transactionId || reference;
@@ -160,7 +178,7 @@ export async function initiateMobileMoneyDeposit(
     };
   } catch (directErr: any) {
     console.error('[PaymentService] Direct PesaJet deposit failed:', directErr);
-    throw new Error(directErr?.message || 'Failed to initiate Mobile Money deposit. Please verify your phone number.');
+    throw new Error(friendlyPaymentError(directErr?.message));
   }
 }
 

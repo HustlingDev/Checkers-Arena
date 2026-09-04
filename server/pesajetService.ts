@@ -66,13 +66,25 @@ export class PesajetService {
   public detectProvider(raw: string): 'mtn' | 'airtel' {
     const clean = (raw || '').replace(/\D/g, '');
     const num = clean.startsWith('256') ? clean.substring(3) : clean.startsWith('0') ? clean.substring(1) : clean;
-    if (num.startsWith('77') || num.startsWith('78') || num.startsWith('76')) {
+    if (num.startsWith('77') || num.startsWith('78') || num.startsWith('76') || num.startsWith('79') || num.startsWith('39')) {
       return 'mtn';
     }
     if (num.startsWith('70') || num.startsWith('75') || num.startsWith('74')) {
       return 'airtel';
     }
     return 'mtn';
+  }
+
+  /**
+   * Sanitize description for MTN/Airtel gateways: strictly alphanumeric + space, max 30 chars
+   */
+  public sanitizeDescription(desc?: string, maxLen = 30): string {
+    if (!desc) return 'Checkers Arena';
+    const cleaned = desc
+      .replace(/[^a-zA-Z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned.substring(0, maxLen) || 'Checkers Arena';
   }
 
   /**
@@ -83,6 +95,7 @@ export class PesajetService {
     const formattedPhone = this.formatUgandaPhone(params.phoneNumber);
     const provider = params.provider || this.detectProvider(params.phoneNumber);
     const currency = params.currency || 'UGX';
+    const safeDescription = this.sanitizeDescription(params.description || `Deposit ${params.amount} UGX`);
 
     const url = `${config.baseUrl}/payments`;
     const payload = {
@@ -93,6 +106,7 @@ export class PesajetService {
       provider: provider,
       reference: params.reference,
       idempotencyKey: params.idempotencyKey,
+      description: safeDescription,
     };
 
     console.log(`[PesaJet] Request to ${url}:`, JSON.stringify(payload));

@@ -362,7 +362,7 @@ app.post(['/api/pesajet/initiate-deposit', '/api/pesajet/initiate-order', '/api/
       provider: detectedProvider,
       reference,
       idempotencyKey,
-      description: description || `Checkers Arena Deposit (${parsedAmount} UGX)`,
+      description: description ? pesajetService.sanitizeDescription(description) : `Checkers Arena Deposit ${parsedAmount} UGX`,
     });
 
     const txId = result.transactionId || result.id || reference;
@@ -611,7 +611,7 @@ app.post('/api/wallet/withdraw', async (req, res) => {
         provider: detectedProvider,
         reference: withdrawReference,
         idempotencyKey,
-        description: `Checkers Arena Payout to ${phoneNumber}`,
+        description: `Checkers Arena Payout ${parsed} UGX`,
       });
 
       console.log('[PesaJet Disbursement] Payout result:', disburseResult);

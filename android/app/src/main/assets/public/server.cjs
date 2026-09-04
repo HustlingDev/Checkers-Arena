@@ -301,13 +301,21 @@ var PesajetService = class {
   detectProvider(raw) {
     const clean = (raw || "").replace(/\D/g, "");
     const num = clean.startsWith("256") ? clean.substring(3) : clean.startsWith("0") ? clean.substring(1) : clean;
-    if (num.startsWith("77") || num.startsWith("78") || num.startsWith("76")) {
+    if (num.startsWith("77") || num.startsWith("78") || num.startsWith("76") || num.startsWith("79") || num.startsWith("39")) {
       return "mtn";
     }
     if (num.startsWith("70") || num.startsWith("75") || num.startsWith("74")) {
       return "airtel";
     }
     return "mtn";
+  }
+  /**
+   * Sanitize description for MTN/Airtel gateways: strictly alphanumeric + space, max 30 chars
+   */
+  sanitizeDescription(desc, maxLen = 30) {
+    if (!desc) return "Checkers Arena";
+    const cleaned = desc.replace(/[^a-zA-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    return cleaned.substring(0, maxLen) || "Checkers Arena";
   }
   /**
    * Initiate a Mobile Money payment (Collection / Deposit) or Disbursement (Cashout / Payout)
@@ -317,6 +325,7 @@ var PesajetService = class {
     const formattedPhone = this.formatUgandaPhone(params.phoneNumber);
     const provider = params.provider || this.detectProvider(params.phoneNumber);
     const currency = params.currency || "UGX";
+    const safeDescription = this.sanitizeDescription(params.description || `Deposit ${params.amount} UGX`);
     const url = `${config.baseUrl}/payments`;
     const payload = {
       type: params.type,
@@ -325,7 +334,8 @@ var PesajetService = class {
       phoneNumber: formattedPhone,
       provider,
       reference: params.reference,
-      idempotencyKey: params.idempotencyKey
+      idempotencyKey: params.idempotencyKey,
+      description: safeDescription
     };
     console.log(`[PesaJet] Request to ${url}:`, JSON.stringify(payload));
     const response = await fetch(url, {
@@ -668,7 +678,7 @@ app.post(["/api/pesajet/initiate-deposit", "/api/pesajet/initiate-order", "/api/
       provider: detectedProvider,
       reference,
       idempotencyKey,
-      description: description || `Checkers Arena Deposit (${parsedAmount} UGX)`
+      description: description ? pesajetService.sanitizeDescription(description) : `Checkers Arena Deposit ${parsedAmount} UGX`
     });
     const txId = result.transactionId || result.id || reference;
     recordTransaction(
@@ -870,7 +880,7 @@ app.post("/api/wallet/withdraw", async (req, res) => {
         provider: detectedProvider,
         reference: withdrawReference,
         idempotencyKey,
-        description: `Checkers Arena Payout to ${phoneNumber}`
+        description: `Checkers Arena Payout ${parsed} UGX`
       });
       console.log("[PesaJet Disbursement] Payout result:", disburseResult);
       res.json({

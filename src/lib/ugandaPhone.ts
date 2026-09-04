@@ -65,7 +65,7 @@ export function validateUgandaPhoneNumber(input: string): UgandaPhoneValidation 
   const prefix = clean.substring(3, 5); // 77, 78, 76, 70, 75, 74, 71, 72, 79
   let operator: UgandaPhoneValidation['operator'] = 'Uganda Mobile';
 
-  if (['77', '78', '76', '39'].includes(prefix)) {
+  if (['77', '78', '76', '79', '39'].includes(prefix)) {
     operator = 'MTN Mobile Money';
   } else if (['70', '75', '74'].includes(prefix)) {
     operator = 'Airtel Money';
@@ -98,11 +98,31 @@ export function formatUgandaPhone(raw: string): string {
 export function detectUgandaProvider(raw: string): 'mtn' | 'airtel' {
   const clean = (raw || '').replace(/\D/g, '');
   const local = clean.startsWith('256') ? clean.substring(3) : clean.startsWith('0') ? clean.substring(1) : clean;
-  if (local.startsWith('77') || local.startsWith('78') || local.startsWith('76') || local.startsWith('39')) {
+  if (
+    local.startsWith('77') ||
+    local.startsWith('78') ||
+    local.startsWith('76') ||
+    local.startsWith('79') ||
+    local.startsWith('39')
+  ) {
     return 'mtn';
   }
   if (local.startsWith('70') || local.startsWith('75') || local.startsWith('74')) {
     return 'airtel';
   }
   return 'mtn';
+}
+
+/**
+ * Sanitize description for MTN/Airtel Mobile Money gateways.
+ * MTN MoMo rejects parentheses, commas, colons and special characters.
+ * Strict format: alphanumeric characters and spaces only, max 30 chars.
+ */
+export function sanitizeMomoDescription(desc?: string, maxLen = 30): string {
+  if (!desc) return 'Checkers Arena Deposit';
+  const cleaned = desc
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.substring(0, maxLen) || 'Checkers Arena Deposit';
 }

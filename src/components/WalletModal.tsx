@@ -188,7 +188,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         phoneNumber: effectivePhoneNumber,
         provider,
         currentUser,
-        description: `Checkers Arena Deposit (${effectiveDepositAmount.toLocaleString()} UGX)`,
+        description: `Checkers Arena Deposit ${effectiveDepositAmount} UGX`,
       });
 
       if (!result.success) {
