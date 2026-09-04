@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -15,6 +16,8 @@ import {
   browserSessionPersistence,
   User as FirebaseUser,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -333,17 +336,39 @@ function createProfileFromFirebaseUser(user: any): UserProfile {
   };
 }
 
-// Google Sign In (Configured with prompt: 'select_account' to show ALL accounts on device)
+// Google Sign In (Native Google Play Services on Android APK, Web Popup on browser)
 export async function signInWithGoogle(rememberMe: boolean = true): Promise<UserProfile> {
   await setAuthRememberMe(rememberMe);
-  const provider = new GoogleAuthProvider();
-  // Ensure the account selector is ALWAYS displayed so the user can choose from all device accounts
-  provider.setCustomParameters({
-    prompt: 'select_account',
-  });
 
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
+  let user: any;
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      GoogleAuth.initialize({
+        clientId: '726155928996-e6fadk0324f1tkbq40dp3ms8dmlsp9ra.apps.googleusercontent.com',
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: true,
+      });
+      const googleUser = await GoogleAuth.signIn();
+      const idToken = googleUser.authentication?.idToken;
+      if (!idToken) {
+        throw new Error('Google Sign-In failed to retrieve authentication token.');
+      }
+      const credential = GoogleAuthProvider.credential(idToken);
+      const res = await signInWithCredential(auth, credential);
+      user = res.user;
+    } catch (nativeErr: any) {
+      console.warn('Native Google Auth error, falling back:', nativeErr);
+      throw nativeErr;
+    }
+  } else {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account',
+    });
+    const result = await signInWithPopup(auth, provider);
+    user = result.user;
+  }
 
   let existingProfile = await getUserProfileFromFirestore(user.uid);
   if (!existingProfile) {
