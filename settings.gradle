@@ -10,3 +10,11 @@ if (!capDir.exists()) {
     capDir = new File(rootDir, 'android/../node_modules/@capacitor/android/capacitor')
 }
 project(':capacitor-android').projectDir = capDir
+
+include ':codetrix-studio-capacitor-google-auth'
+def googleAuthDir = new File(rootDir, 'node_modules/@codetrix-studio/capacitor-google-auth/android')
+if (!googleAuthDir.exists()) {
+    googleAuthDir = new File(rootDir, 'android/../node_modules/@codetrix-studio/capacitor-google-auth/android')
+}
+project(':codetrix-studio-capacitor-google-auth').projectDir = googleAuthDir
+
