@@ -248,7 +248,7 @@ export async function saveUserProfileToFirestore(profile: UserProfile): Promise<
     const normPhone = normalizePhoneNumber(cleanPhone);
     const isGuestUser = Boolean(profile.isGuest || profile.id.startsWith('guest_'));
 
-    const dataToSave = {
+    const dataToSave: Record<string, any> = {
       ...profile,
       phoneNumber: cleanPhone,
       normalizedPhone: normPhone,
@@ -258,6 +258,24 @@ export async function saveUserProfileToFirestore(profile: UserProfile): Promise<
       lastActiveTimestamp: Date.now(),
       updatedAt: serverTimestamp(),
     };
+
+    // Safeguard walletBalance: never overwrite an existing positive balance with 0 or undefined
+    if (dataToSave.walletBalance === undefined || dataToSave.walletBalance === null) {
+      delete dataToSave.walletBalance;
+    } else if (dataToSave.walletBalance === 0) {
+      try {
+        const existingSnap = await getDoc(userRef);
+        if (existingSnap.exists()) {
+          const existingData = existingSnap.data();
+          if (typeof existingData.walletBalance === 'number' && existingData.walletBalance > 0) {
+            dataToSave.walletBalance = existingData.walletBalance;
+          }
+        }
+      } catch {
+        // preserve dataToSave as is on error
+      }
+    }
+
     await setDoc(userRef, dataToSave, { merge: true });
     console.log(`[Firestore] Profile saved successfully for ${profile.username} (${profile.id})`);
   } catch (err) {
@@ -266,11 +284,19 @@ export async function saveUserProfileToFirestore(profile: UserProfile): Promise<
   }
 }
 
-// Delete a guest player's data from Firestore immediately
+// Delete a guest player's data from Firestore immediately - strictly guards accounts with funds or credentials
 export async function deleteGuestPlayerFromFirestore(guestId: string): Promise<void> {
   try {
-    if (!guestId || (!guestId.startsWith('guest_') && !guestId.includes('guest'))) return;
+    if (!guestId || !guestId.startsWith('guest_')) return;
     const userRef = doc(db, 'users', guestId);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const data = snap.data() as UserProfile;
+      // Never delete any account with money or registered email/phone
+      if ((data.walletBalance && data.walletBalance > 0) || data.email || data.phoneNumber) {
+        return;
+      }
+    }
     await deleteDoc(userRef);
     console.log(`[Firestore] Guest player ${guestId} data cleared on exit.`);
   } catch (err) {
@@ -278,7 +304,7 @@ export async function deleteGuestPlayerFromFirestore(guestId: string): Promise<v
   }
 }
 
-// Clean up all guest player accounts from Firestore database
+// Clean up empty guest player accounts from Firestore database safely
 export async function cleanUpAllGuestPlayersFromFirestore(): Promise<number> {
   try {
     const usersRef = collection(db, 'users');
@@ -287,18 +313,20 @@ export async function cleanUpAllGuestPlayersFromFirestore(): Promise<number> {
 
     for (const docSnap of snap.docs) {
       const data = docSnap.data() as UserProfile;
-      const isGuest =
-        data.isGuest ||
-        docSnap.id.startsWith('guest_') ||
-        (data.username && data.username.toLowerCase().startsWith('guest'));
+      // Absolute safety: NEVER delete any user with an email, phone, or balance > 0
+      if (data.email || data.phoneNumber || (typeof data.walletBalance === 'number' && data.walletBalance > 0)) {
+        continue;
+      }
 
-      if (isGuest) {
+      // Only clean up temporary guest documents with no funds or credentials
+      const isPureGuest = docSnap.id.startsWith('guest_') && Boolean(data.isGuest);
+      if (isPureGuest) {
         await deleteDoc(docSnap.ref);
         deletedCount++;
       }
     }
     if (deletedCount > 0) {
-      console.log(`[Firestore] Cleaned up ${deletedCount} guest player records from database.`);
+      console.log(`[Firestore] Cleaned up ${deletedCount} empty guest player records from database.`);
     }
     return deletedCount;
   } catch (err) {
@@ -724,6 +752,30 @@ export async function getUserProfileFromFirestore(uid: string): Promise<UserProf
     console.warn('Firestore getDoc warning:', err);
   }
   return null;
+}
+
+// Subscribe to Realtime Current User Profile in Firestore
+export function subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void) {
+  if (!uid) return () => {};
+  try {
+    const userRef = doc(db, 'users', uid);
+    return onSnapshot(
+      userRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          callback(snapshot.data() as UserProfile);
+        } else {
+          callback(null);
+        }
+      },
+      (err) => {
+        console.warn('Realtime user profile listener warning:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Realtime profile listener failed:', err);
+    return () => {};
+  }
 }
 
 // Configure Auth Persistence

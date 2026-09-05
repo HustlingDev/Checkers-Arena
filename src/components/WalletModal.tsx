@@ -7,7 +7,6 @@ import {
   verifyMobileMoneyStatus,
   withdrawMobileMoney,
   fetchUserTransactions,
-  resetUserBalance,
 } from '../lib/paymentService';
 import {
   Wallet,
@@ -21,7 +20,6 @@ import {
   RefreshCw,
   Check,
   CreditCard,
-  Trash2,
   Smartphone,
   Info,
 } from 'lucide-react';
@@ -60,6 +58,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>(initialTab);
   const [depositAmount, setDepositAmount] = useState<number>(500);
+  const [customDeposit, setCustomDeposit] = useState<string>('');
   const [withdrawAmount, setWithdrawAmount] = useState<number>(1000);
   const [customWithdraw, setCustomWithdraw] = useState<string>('');
 
@@ -71,7 +70,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState<boolean>(false);
-  const [resettingBalance, setResettingBalance] = useState<boolean>(false);
 
   // Active PesaJet Prompt State
   const [pendingPromptTxId, setPendingPromptTxId] = useState<string | null>(null);
@@ -138,28 +136,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     }
   };
 
-  // Reset Balance to 0 UGX for clean start
-  const handleResetSandboxBalance = async () => {
-    setResettingBalance(true);
-    try {
-      await resetUserBalance(currentUser.id, currentUser);
-      onBalanceUpdated(0);
-      setTransactions([]);
-      setStatusMessage({
-        type: 'success',
-        text: 'Balance successfully cleared! Available balance is now 0 UGX.',
-      });
-    } catch (err: any) {
-      console.error('Failed to reset balance:', err);
-      setStatusMessage({ type: 'error', text: 'Could not reset balance. Please try again.' });
-    } finally {
-      setResettingBalance(false);
-    }
-  };
-
   if (!isOpen) return null;
 
-  const effectiveDepositAmount = depositAmount;
+  const parsedCustomDeposit = customDeposit.trim() ? Number(customDeposit) : NaN;
+  const effectiveDepositAmount = !isNaN(parsedCustomDeposit) && parsedCustomDeposit > 0
+    ? parsedCustomDeposit
+    : depositAmount;
   const effectiveWithdrawAmount = customWithdraw ? Number(customWithdraw) : withdrawAmount;
   const effectivePhoneNumber = profilePhone.trim();
 
@@ -500,9 +482,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                     id={`btn-stake-preset-${tier.amount}`}
                     key={tier.amount}
                     type="button"
-                    onClick={() => setDepositAmount(tier.amount)}
+                    onClick={() => {
+                      setDepositAmount(tier.amount);
+                      setCustomDeposit('');
+                    }}
                     className={`py-2 px-2 rounded-xl text-xs font-black border transition flex flex-col items-center justify-center cursor-pointer ${
-                      depositAmount === tier.amount
+                      effectiveDepositAmount === tier.amount && !customDeposit
                         ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow'
                         : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                     }`}
@@ -511,6 +496,28 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                     <span className="text-[9px] text-slate-500 font-semibold">{tier.category}</span>
                   </button>
                 ))}
+              </div>
+
+              <div className="pt-1">
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Or Enter Desired Deposit Amount (UGX)
+                </label>
+                <div className="relative">
+                  <input
+                    id="input-custom-deposit-amount"
+                    type="number"
+                    min={500}
+                    step={100}
+                    placeholder="Enter any amount (min 500 UGX)"
+                    value={customDeposit}
+                    onChange={(e) => setCustomDeposit(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs font-bold focus:outline-none focus:border-amber-400"
+                  />
+                  <span className="absolute right-3 top-2.5 text-slate-500 text-xs font-bold">UGX</span>
+                </div>
+                {customDeposit && Number(customDeposit) < 500 && (
+                  <p className="text-[10px] text-rose-400 mt-1">Minimum deposit is 500 UGX.</p>
+                )}
               </div>
             </div>
 
@@ -774,19 +781,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                 ))}
               </div>
             )}
-
-            {/* Clear Sandbox History */}
-            <div className="pt-3 border-t border-slate-800 flex justify-end">
-              <button
-                id="btn-clear-sandbox-balance"
-                onClick={handleResetSandboxBalance}
-                disabled={resettingBalance}
-                className="px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Reset Balance to 0 UGX</span>
-              </button>
-            </div>
           </div>
         )}
       </div>

@@ -176,6 +176,7 @@ export const STAKE_TIERS: StakeTier[] = [
 export interface UserProfile {
   id: string;
   username: string;
+  email?: string;
   realName?: string;
   phoneNumber?: string;
   normalizedPhone?: string;

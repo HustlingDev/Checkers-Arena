@@ -10,6 +10,26 @@
     "walletBalance": 200,
     "welcomeBonusClaimed": true,
     "status": "online",
-    "createdAt": 1788526055307
+    "createdAt": 1788526055307,
+    "totalWon": 0,
+    "totalStaked": 0,
+    "isOnline": false
+  },
+  {
+    "id": "Oruqp2VsDaVfCG7gLt1Y3c1pwZ33",
+    "email": "hackerug06@gmail.com",
+    "username": "HackerUg",
+    "avatarId": "avatar-crown",
+    "wins": 0,
+    "losses": 0,
+    "draws": 0,
+    "rating": 1200,
+    "walletBalance": 500,
+    "welcomeBonusClaimed": true,
+    "status": "online",
+    "createdAt": 1788526055307,
+    "totalWon": 0,
+    "totalStaked": 0,
+    "isOnline": false
   }
 ]

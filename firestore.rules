@@ -3,19 +3,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users collection rules - allow reading, writing, and deleting for all in-app user profiles
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection rules:
+    // Read: anyone can view player profiles for lobby matchmaking & leaderboard.
+    // Create: allowed for new user registration or guest sessions.
+    // Update: allowed for the owner of the document or matching self-id payload.
+    // Delete: restricted to account owner or guest cleanup.
     match /users/{userId} {
-      allow read, write, create, update, delete: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update: if (isOwner(userId) || request.resource.data.id == userId)
+                    && (request.resource.data.walletBalance == null || request.resource.data.walletBalance >= 0);
+      allow delete: if isOwner(userId) || (userId.matches('^guest_.*') && (resource.data.walletBalance == null || resource.data.walletBalance == 0));
     }
 
-    // Transactions collection rules for deposits, withdrawals, and stakes
+    // Transactions collection rules:
+    // Highly protected ledger: IMMUTABLE once created.
+    // Transactions can NEVER be edited, modified, or deleted by any client or hacker!
     match /transactions/{txId} {
-      allow read, write, create, update, delete: if true;
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
     }
 
-    // Claimed bonus phones registry for preventing welcome bonus duplicate abuse across accounts
+    // Claimed bonus phones registry:
+    // Immutable to prevent repeat bonus claiming exploits
     match /claimed_bonus_phones/{phoneId} {
-      allow read, write, create, update, delete: if true;
+      allow read, create: if true;
+      allow update, delete: if false;
     }
 
     // Direct Challenge requests between players
@@ -33,19 +56,20 @@ service cloud.firestore {
       }
     }
 
-    // Global Chat messages
+    // Global Chat messages: immutable once written
     match /chat/{messageId} {
-      allow read, write, create, update, delete: if true;
+      allow read, create: if true;
+      allow update, delete: if false;
     }
 
     // Leaderboards collection
     match /leaderboard/{entry} {
-      allow read, write, create, update, delete: if true;
+      allow read, write: if true;
     }
 
-    // Fallback document access
+    // Fallback: Default deny any unknown collection
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

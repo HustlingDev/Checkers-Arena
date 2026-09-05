@@ -538,34 +538,11 @@ app.get('/api/wallet/transactions', (req, res) => {
   res.json({ success: true, transactions: userTxs });
 });
 
-// Wallet Reset Balances API (Purge Sandbox & Mock balances)
-app.post(['/api/wallet/reset-balance', '/api/wallet/reset'], (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ success: false, message: 'Missing userId' });
-
-  const user = usersMap.get(userId);
-  if (user) {
-    user.walletBalance = 0;
-    user.totalWon = 0;
-    user.totalStaked = 0;
-    usersMap.set(userId, user);
-    persistUsers();
-  }
-
-  // Clear sandbox and test transactions for this user
-  for (let i = transactionsList.length - 1; i >= 0; i--) {
-    if (transactionsList[i].userId === userId) {
-      transactionsList.splice(i, 1);
-    }
-  }
-  persistTransactions();
-
-  res.json({
-    success: true,
-    walletBalance: 0,
-    totalWon: 0,
-    totalStaked: 0,
-    message: 'Sandbox balance successfully cleared and reset to 0 UGX.',
+// Wallet Reset Balances API disabled for production security
+app.post(['/api/wallet/reset-balance', '/api/wallet/reset'], (_req, res) => {
+  return res.status(403).json({
+    success: false,
+    message: 'Resetting wallet balances is disabled to protect player funds.',
   });
 });
 
@@ -684,25 +661,39 @@ wss.on('connection', (ws: WebSocket) => {
           }
 
           const cleanUsername = username.trim();
+          const userEmail = (payload.email || '').toLowerCase().trim();
           let userProfile: UserProfile;
-          const targetId = existingUserId || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-          // Check if existing user by ID or lowercased username
+          // Check if existing user by ID, email, or lowercased username
           const existingUser =
             (existingUserId && usersMap.get(existingUserId)) ||
             Array.from(usersMap.values()).find(
-              (u) => u.username.toLowerCase() === cleanUsername.toLowerCase()
+              (u) =>
+                (userEmail && u.email && u.email.toLowerCase() === userEmail) ||
+                (u.username && u.username.toLowerCase() === cleanUsername.toLowerCase())
             );
 
+          const targetId = existingUser?.id || existingUserId || `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
           if (existingUser) {
+            const clientBal = typeof payload.walletBalance === 'number' && payload.walletBalance >= 0 ? payload.walletBalance : undefined;
+            const effectiveBalance = clientBal !== undefined && clientBal > (existingUser.walletBalance || 0)
+              ? clientBal
+              : (existingUser.walletBalance || 0);
+
             userProfile = {
               ...existingUser,
               id: targetId,
               username: cleanUsername,
               avatarId: avatarId || existingUser.avatarId,
+              walletBalance: effectiveBalance,
               status: 'online',
             };
           } else {
+            const initialBal = typeof payload.walletBalance === 'number' && payload.walletBalance >= 0
+              ? payload.walletBalance
+              : 200;
+
             userProfile = {
               id: targetId,
               username: cleanUsername,
@@ -711,19 +702,21 @@ wss.on('connection', (ws: WebSocket) => {
               losses: 0,
               draws: 0,
               rating: 1200,
-              walletBalance: 200,
+              walletBalance: initialBal,
               welcomeBonusClaimed: true,
               status: 'online',
               createdAt: Date.now(),
             };
 
-            // Record 200 UGX welcome bonus transaction
-            recordTransaction(
-              targetId,
-              'deposit',
-              200,
-              '🎁 Welcome Bonus Stake (200 UGX)'
-            );
+            // Record welcome bonus transaction if initial balance is 200
+            if (initialBal === 200) {
+              recordTransaction(
+                targetId,
+                'deposit',
+                200,
+                '🎁 Welcome Bonus Stake (200 UGX)'
+              );
+            }
           }
 
           usersMap.set(userProfile.id, userProfile);

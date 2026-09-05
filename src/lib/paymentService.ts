@@ -7,6 +7,7 @@ import {
   recordWalletTransactionInFirestore,
   getUserTransactionsFromFirestore,
   updateUserWalletBalanceInFirestore,
+  getUserProfileFromFirestore,
 } from './firebase';
 import { UserProfile, WalletTransaction } from '../types';
 import { formatUgandaPhone, detectUgandaProvider, sanitizeMomoDescription } from './ugandaPhone';
@@ -203,12 +204,16 @@ export async function verifyMobileMoneyStatus(params: {
 
     if (res.ok && res.data && res.data.success) {
       if (res.data.completed || res.data.status === 'COMPLETED' || res.data.status === 'SUCCESSFUL') {
-        const newBal = res.data.walletBalance || ((currentUser.walletBalance || 0) + amount);
+        const liveProfile = await getUserProfileFromFirestore(userId);
+        const liveBal = liveProfile && typeof liveProfile.walletBalance === 'number'
+          ? liveProfile.walletBalance
+          : (res.data.walletBalance || ((currentUser.walletBalance || 0) + amount));
+
         return {
           success: true,
           completed: true,
           status: 'COMPLETED',
-          walletBalance: newBal,
+          walletBalance: liveBal,
           message: 'Payment Confirmed! Funds credited to your wallet.',
         };
       } else if (res.data.failed) {
@@ -253,13 +258,37 @@ export async function verifyMobileMoneyStatus(params: {
         const rawStatus = (result.status || '').toUpperCase();
 
         if (rawStatus === 'COMPLETED' || rawStatus === 'SUCCESSFUL') {
-          const newBal = (currentUser.walletBalance || 0) + amount;
+          // Check live balance from Firestore to prevent overwriting with stale local 0 balance
+          const liveProfile = await getUserProfileFromFirestore(userId);
+          const currentBal = liveProfile && typeof liveProfile.walletBalance === 'number'
+            ? liveProfile.walletBalance
+            : (currentUser.walletBalance || 0);
+
+          // Check if already processed to avoid double-crediting
+          const existingTxs = await getUserTransactionsFromFirestore(userId);
+          const alreadyProcessed = existingTxs.some(
+            (t) =>
+              (t.id === reference || t.id === transactionId || (t.pesajetTransactionId && t.pesajetTransactionId === transactionId)) &&
+              t.status === 'completed'
+          );
+
+          if (alreadyProcessed) {
+            return {
+              success: true,
+              completed: true,
+              status: 'COMPLETED',
+              walletBalance: currentBal,
+              message: `Payment already confirmed! ${currentBal.toLocaleString()} UGX in your wallet.`,
+            };
+          }
+
+          const newBal = currentBal + amount;
 
           // Update user balance in Firestore
           await updateUserWalletBalanceInFirestore(userId, newBal);
 
           // Update profile in Firestore
-          const updatedProfile: UserProfile = { ...currentUser, walletBalance: newBal };
+          const updatedProfile: UserProfile = { ...(liveProfile || currentUser), walletBalance: newBal };
           saveUserProfileToFirestore(updatedProfile).catch(() => {});
           try {
             localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
@@ -469,30 +498,8 @@ export async function fetchUserTransactions(userId: string): Promise<WalletTrans
 }
 
 /**
- * Reset Wallet Balance
+ * Reset Wallet Balance - Disabled to protect player deposits
  */
-export async function resetUserBalance(userId: string, currentUser: UserProfile): Promise<void> {
-  // 1. Backend reset if available
-  apiFetchJson('/api/wallet/reset-balance', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  }).catch(() => {});
-
-  // 2. Firestore reset
-  await updateUserWalletBalanceInFirestore(userId, 0);
-  const updatedProfile: UserProfile = {
-    ...currentUser,
-    walletBalance: 0,
-    totalWon: 0,
-    totalStaked: 0,
-  };
-  await saveUserProfileToFirestore(updatedProfile);
-  try {
-    localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
-    localStorage.setItem('checkers_sandbox_cleaned_v2', 'true');
-    localStorage.removeItem(`checkers_tx_${userId}`);
-  } catch {
-    // ignore
-  }
+export async function resetUserBalance(_userId: string, _currentUser: UserProfile): Promise<void> {
+  console.warn('[PaymentService] Balance reset operation is permanently disabled to protect funds.');
 }
