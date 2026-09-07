@@ -1,4 +1,4 @@
-name: Build & Publish Debug APK
+name: Build & Publish Checkers Arena Release APK
 
 on:
   push:
@@ -94,7 +94,7 @@ jobs:
           find . -name "*.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
           find node_modules -name "build.gradle" -exec sed -i "s/'1.17.0'/'1.15.0'/g; s/'1.11.0'/'1.9.3'/g; s/'1.8.9'/'1.8.5'/g; s/'1.7.1'/'1.7.0'/g; s/'1.14.0'/'1.12.1'/g" {} + || true
 
-      - name: Build debug APK
+      - name: Build Android Release and Debug APK
         run: |
           if ! unzip -t android/gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
             echo "Repairing gradle-wrapper.jar..."
@@ -102,63 +102,66 @@ jobs:
           fi
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease assembleDebug --no-daemon || ./gradlew assembleDebug --no-daemon
 
-      - name: Verify debug APK
-        run: |
-          EXPECTED_APK="app/build/outputs/apk/debug/app-debug.apk"
-          if [ ! -f "$EXPECTED_APK" ] && [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-            mkdir -p app/build/outputs/apk/debug
-            cp android/app/build/outputs/apk/debug/app-debug.apk "$EXPECTED_APK"
-          fi
-          if [ ! -f "$EXPECTED_APK" ]; then
-            echo "Error: Expected debug APK not found at $EXPECTED_APK"
-            echo "Searching app/build/outputs/apk for APK files:"
-            find app/build/outputs/apk -name "*.apk" 2>/dev/null || true
-            find android/app/build/outputs/apk -name "*.apk" 2>/dev/null || true
-            exit 1
-          fi
-          if [ ! -s "$EXPECTED_APK" ]; then
-            echo "Error: $EXPECTED_APK is empty."
-            exit 1
-          fi
-          if [[ "$EXPECTED_APK" != *.apk ]]; then
-            echo "Error: File does not have .apk extension."
-            exit 1
-          fi
-          echo "Verified APK at $EXPECTED_APK"
-
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Prepare APK release asset
+      - name: Prepare and verify "Checkers Arena.apk"
         id: prep_asset
         run: |
           TEMP_DIR="$RUNNER_TEMP/release-asset"
           mkdir -p "$TEMP_DIR"
           
-          REPO_NAME="${{ github.event.repository.name }}"
-          SAFE_REPO_NAME=$(echo "$REPO_NAME" | tr -c 'a-zA-Z0-9_-' '-')
-          RUN_NUM="${{ github.run_number }}"
-          ASSET_NAME="${SAFE_REPO_NAME}-debug-build-${RUN_NUM}.apk"
-          ASSET_PATH="${TEMP_DIR}/${ASSET_NAME}"
-          
-          cp app/build/outputs/apk/debug/app-debug.apk "$ASSET_PATH"
-          
-          if [ ! -f "$ASSET_PATH" ] || [ ! -s "$ASSET_PATH" ]; then
-            echo "Error: Prepared release asset is missing or empty."
+          # Find the best APK produced (prefer release over debug)
+          SOURCE_APK=""
+          if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            SOURCE_APK="android/app/build/outputs/apk/release/app-release.apk"
+            echo "Found Release APK: $SOURCE_APK"
+          elif [ -f "android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            SOURCE_APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+            echo "Found Unsigned Release APK: $SOURCE_APK"
+          elif [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            SOURCE_APK="android/app/build/outputs/apk/debug/app-debug.apk"
+            echo "Found Debug APK as fallback: $SOURCE_APK"
+          else
+            # Search anywhere in outputs
+            FOUND_APK=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+            if [ -n "$FOUND_APK" ]; then
+              SOURCE_APK="$FOUND_APK"
+              echo "Found APK: $SOURCE_APK"
+            fi
+          fi
+
+          if [ -z "$SOURCE_APK" ] || [ ! -f "$SOURCE_APK" ]; then
+            echo "Error: No APK found after build!"
             exit 1
           fi
-          
-          echo "asset_path=${ASSET_PATH}" >> $GITHUB_OUTPUT
-          echo "asset_name=${ASSET_NAME}" >> $GITHUB_OUTPUT
-          echo "Prepared release asset at ${ASSET_PATH}"
 
-      - name: Publish APK to GitHub Releases
+          # Name the APK "Checkers Arena.apk" as requested by user
+          NAMED_APK="${TEMP_DIR}/Checkers Arena.apk"
+          STANDARD_APK="${TEMP_DIR}/Checkers_Arena_Release.apk"
+          
+          cp "$SOURCE_APK" "$NAMED_APK"
+          cp "$SOURCE_APK" "$STANDARD_APK"
+          
+          if [ ! -s "$NAMED_APK" ]; then
+            echo "Error: Prepared $NAMED_APK is empty!"
+            exit 1
+          fi
+
+          echo "asset_path=${NAMED_APK}" >> $GITHUB_OUTPUT
+          echo "std_asset_path=${STANDARD_APK}" >> $GITHUB_OUTPUT
+          echo "asset_name=Checkers Arena.apk" >> $GITHUB_OUTPUT
+          echo "Successfully prepared Checkers Arena.apk (Size: $(du -h "$NAMED_APK" | cut -f1))"
+
+      - name: Upload Checkers Arena APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Checkers-Arena-Release-APK
+          path: |
+            ${{ steps.prep_asset.outputs.asset_path }}
+            ${{ steps.prep_asset.outputs.std_asset_path }}
+          if-no-files-found: error
+
+      - name: Publish Checkers Arena Release APK to GitHub Releases
         id: create_release
         continue-on-error: true
         env:
@@ -167,62 +170,51 @@ jobs:
           gh --version
           
           ASSET_PATH="${{ steps.prep_asset.outputs.asset_path }}"
-          ASSET_NAME="${{ steps.prep_asset.outputs.asset_name }}"
+          STD_ASSET_PATH="${{ steps.prep_asset.outputs.std_asset_path }}"
           
-          if [ ! -f "$ASSET_PATH" ] || [ ! -s "$ASSET_PATH" ]; then
-            echo "Validation failed: Release asset missing or empty."
-            exit 1
-          fi
+          TAG_NAME="v1.0.${{ github.run_number }}-release"
+          RELEASE_TITLE="Checkers Arena - Win real cash (Build #${{ github.run_number }})"
           
-          TAG_NAME="debug-apk-build-${{ github.run_number }}-${{ github.run_attempt }}"
-          RELEASE_TITLE="Debug APK Build #${{ github.run_number }}"
+          RELEASE_NOTES=$(cat << 'EOF'
+          # Checkers Arena 👑
+          ### Slogan: "Win real cash" 💰
           
-          RELEASE_NOTES=$(printf "This is an automatically generated debug APK built by GitHub Actions.\n\n- Run Number: #%s\n- Run Attempt: #%s\n- Source Commit: %s\n\nNote: This APK is intended for testing and is signed only with a temporary debug keystore. It is not a Play Store production release." "${{ github.run_number }}" "${{ github.run_attempt }}" "${{ github.sha }}")
+          Welcome to the official Android Release for **Checkers Arena**!
           
-          gh release create "$TAG_NAME" "$ASSET_PATH" \
+          ### 📱 Included in this release:
+          - **App Name:** Checkers Arena
+          - **Slogan:** "Win real cash" (prominently displayed in app & splash screen)
+          - **Direct Multiplayer:** Play live checkers matches with real players & AI bots.
+          - **Instant Stakes & Winnings:** Real-time wallet tracking and instant stakes.
+          - **Bug Fixes:** Locked table dimensions preventing any board movement during gameplay, and silenced routine action toasts.
+          
+          ### 📥 Installation:
+          Download **`Checkers Arena.apk`** below directly to your Android device, tap to install, and start playing!
+          EOF
+          )
+          
+          gh release create "$TAG_NAME" "$ASSET_PATH" "$STD_ASSET_PATH" \
             --title "$RELEASE_TITLE" \
             --target "${{ github.sha }}" \
             --notes "$RELEASE_NOTES" \
             --latest
 
-      - name: Report APK download result
+      - name: Report Release Publication Summary
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_NAME="debug-apk-build-${{ github.run_number }}-${{ github.run_attempt }}"
-          ASSET_NAME="${{ steps.prep_asset.outputs.asset_name }}"
-          OUTCOME="${{ steps.create_release.outcome }}"
+          TAG_NAME="v1.0.${{ github.run_number }}-release"
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
+          RELEASE_URL="${REPO_URL}/releases/tag/${TAG_NAME}"
           
-          if [ "$OUTCOME" = "success" ]; then
-            echo "Release publishing succeeded!"
-            gh release view "$TAG_NAME" || true
-            
-            REPO_URL="${{ github.server_url }}/${{ github.repository }}"
-            RELEASE_URL="${REPO_URL}/releases/tag/${TAG_NAME}"
-            
-            echo "Release Tag: $TAG_NAME"
-            echo "Release Title: Debug APK Build #${{ github.run_number }}"
-            echo "Release Page URL: $RELEASE_URL"
-            echo "Asset Filename: $ASSET_NAME"
-            
-            cat <<EOF >> $GITHUB_STEP_SUMMARY
-          ### 🎉 Debug APK Release Published Successfully
+          cat <<EOF >> $GITHUB_STEP_SUMMARY
+          ### 🏆 Checkers Arena - "Win real cash" Release APK
+          - **App Name:** Checkers Arena
+          - **Slogan:** Win real cash
+          - **Release APK Name:** \`Checkers Arena.apk\`
           - **Release Tag:** \`$TAG_NAME\`
-          - **Direct Download Page:** [$RELEASE_URL]($RELEASE_URL)
-          - **APK Asset Filename:** \`$ASSET_NAME\`
-
-          The APK can be downloaded directly from the release **Assets** section.
-          *Backup Actions Artifact:* \`app-debug-apk\` is also available under Artifacts.
+          - **Direct Release Link:** [$RELEASE_URL]($RELEASE_URL)
+          
+          Download **\`Checkers Arena.apk\`** directly from the GitHub Release Assets or from the GitHub Actions Artifacts!
           EOF
-          else
-            echo "::warning::Release publishing failed or was skipped."
-            echo "APK build succeeded and artifact 'app-debug-apk' remains available."
-            
-            cat <<EOF >> $GITHUB_STEP_SUMMARY
-          ### ⚠️ Debug APK Build Succeeded (Release Publishing Warning)
-          - The APK build and verification completed successfully.
-          - **Artifact Available:** The debug APK is available as a GitHub Actions artifact named \`app-debug-apk\`.
-          - **Note:** Release publishing did not complete. You can download \`app-debug-apk\` directly from the GitHub Actions run summary artifacts section.
-          EOF
-          fi

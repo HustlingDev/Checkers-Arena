@@ -27,15 +27,21 @@ export const Header: React.FC<HeaderProps> = ({
         {/* 1. Game Heading with Logo and Live Online Count */}
         <div className="flex items-center gap-2 sm:gap-2.5">
           <AppLogo size="sm" />
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
-            <h1 className="text-sm sm:text-lg font-black tracking-tight bg-gradient-to-r from-amber-200 via-amber-400 to-rose-400 bg-clip-text text-transparent leading-none">
-              Checkers Arena
-            </h1>
-            {/* Live Online Player Count */}
-            <div className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-[9px] sm:text-[11px] font-black shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span>{Math.max(1, onlineCount)}</span>
+          <div className="flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-xs sm:text-base font-black tracking-tight bg-gradient-to-r from-amber-200 via-amber-400 to-rose-400 bg-clip-text text-transparent leading-none">
+                Checkers Arena
+              </h1>
+              {/* Live Online Player Count */}
+              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-[8px] sm:text-[10px] font-black shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span>{Math.max(1, onlineCount)}</span>
+              </div>
             </div>
+            {/* App Slogan */}
+            <span className="text-[8px] sm:text-[9px] font-black tracking-wider uppercase text-amber-400/90 leading-tight">
+              Win real cash
+            </span>
           </div>
         </div>
 

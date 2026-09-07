@@ -233,7 +233,7 @@ export const GameRoom: React.FC<GameRoomProps> = ({
   const isLowTime = isMyTurn && timeLeft <= 30 && timeLeft > 0;
 
   return (
-    <div className="w-full h-[calc(100vh-64px)] max-h-[calc(100vh-64px)] flex flex-col justify-between p-1 sm:p-2.5 relative select-none overflow-hidden bg-slate-950">
+    <div className="w-full h-full flex-1 flex flex-col justify-between p-1 sm:p-2.5 relative select-none overflow-hidden bg-slate-950 touch-manipulation overscroll-none">
       
       {/* Floating Animated Emoji Reaction Badge */}
       {latestEmojiReaction && (

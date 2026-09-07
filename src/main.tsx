@@ -106,13 +106,15 @@ if (typeof window !== 'undefined') {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {
+          // Check for worker updates on every page load
+          registration.update().catch(() => {});
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // New update available, notify or auto-refresh
-                  console.log('New update available for installed Checkers app.');
+                  // New update available, reload automatically to clear stale cache
+                  window.location.reload();
                 }
               });
             }
