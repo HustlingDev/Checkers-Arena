@@ -1,9 +1,8 @@
 // API Configuration & Base URL resolution for Web and Android Capacitor Native App
 
 const CANDIDATE_API_URLS = [
-  'https://checkersarena-beta.vercel.app',
-  'https://ais-dev-6jl5ztzyfigu5rh4loi7rf-490075589647.europe-west2.run.app',
   'https://ais-pre-6jl5ztzyfigu5rh4loi7rf-490075589647.europe-west2.run.app',
+  'https://ais-dev-6jl5ztzyfigu5rh4loi7rf-490075589647.europe-west2.run.app',
 ];
 
 export const getApiBaseUrl = (): string => {
@@ -23,8 +22,8 @@ export const getApiBaseUrl = (): string => {
       origin.startsWith('https://localhost');
 
     if (isCapacitorNative) {
-      // Primary public API endpoint for mobile APK builds
-      return 'https://checkersarena-beta.vercel.app';
+      // Primary public backend API endpoint for mobile APK builds
+      return 'https://ais-pre-6jl5ztzyfigu5rh4loi7rf-490075589647.europe-west2.run.app';
     }
   }
   return '';

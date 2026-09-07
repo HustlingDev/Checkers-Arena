@@ -367,6 +367,7 @@ export async function verifyMobileMoneyStatus(params: {
 
 /**
  * Mobile Money Withdrawal / Cashout
+ * Fully supports Web and Android APK (Direct PesaJet Gateway + Firestore)
  */
 export async function withdrawMobileMoney(params: WithdrawParams): Promise<WithdrawResult> {
   const { userId, amount, phoneNumber, currentUser } = params;
@@ -383,33 +384,13 @@ export async function withdrawMobileMoney(params: WithdrawParams): Promise<Withd
   const formattedPhone = formatUgandaPhone(phoneNumber);
   const detectedProvider = params.provider || detectUgandaProvider(phoneNumber);
   const withdrawReference = `CHK_WTH_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-  const newBalance = Math.max(0, currentBalance - amount);
+  const idempotencyKey = `wth-${userId}-${Date.now()}`;
+  const safeDescription = sanitizeMomoDescription(`Checkers Arena Payout ${amount} UGX`);
 
-  // 1. Immediately deduct wallet in Firestore and local storage
-  await updateUserWalletBalanceInFirestore(userId, newBalance);
-  const updatedProfile: UserProfile = { ...currentUser, walletBalance: newBalance };
-  saveUserProfileToFirestore(updatedProfile).catch(() => {});
-  try {
-    localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
-  } catch {
-    // ignore
-  }
+  // 1. Try Backend Proxy first (used on Web and when backend is reachable)
+  let backendDispatched = false;
+  let backendResult: any = null;
 
-  // Record transaction in Firestore
-  const withdrawTx: WalletTransaction = {
-    id: withdrawReference,
-    userId,
-    type: 'withdrawal',
-    amount,
-    currency: 'UGX',
-    status: 'completed',
-    description: `Cashout to ${detectedProvider.toUpperCase()} (${formattedPhone}) - ${amount.toLocaleString()} UGX`,
-    reference: withdrawReference,
-    timestamp: Date.now(),
-  };
-  recordWalletTransactionInFirestore(withdrawTx).catch(() => {});
-
-  // 2. Try Backend Disbursement first
   try {
     const backendRes = await apiFetchJson('/api/wallet/withdraw', {
       method: 'POST',
@@ -421,46 +402,148 @@ export async function withdrawMobileMoney(params: WithdrawParams): Promise<Withd
         provider: detectedProvider,
       }),
     });
+
     if (backendRes.ok && backendRes.data && backendRes.data.success) {
-      return {
-        success: true,
-        walletBalance: backendRes.data.walletBalance ?? newBalance,
-        reference: withdrawReference,
-        message: backendRes.data.message || `Cashout of ${amount.toLocaleString()} UGX initiated to ${formattedPhone}!`,
-      };
+      backendDispatched = true;
+      backendResult = backendRes.data;
+    } else if (backendRes.data && backendRes.data.message) {
+      // If backend explicitly rejected the request (e.g. invalid phone, balance check), throw
+      throw new Error(backendRes.data.message);
     }
-  } catch (backendErr) {
-    console.warn('[PaymentService] Backend cashout call failed, executing direct disbursement fallback:', backendErr);
+  } catch (backendErr: any) {
+    if (backendErr?.message && !backendErr.message.includes('connect') && !backendErr.message.includes('fetch') && !backendErr.message.includes('HTML')) {
+      // Intentional business error from backend
+      throw backendErr;
+    }
+    console.warn('[PaymentService] Backend disbursement proxy unavailable, using direct PesaJet gateway:', backendErr?.message);
   }
 
-  // 3. Direct PesaJet Disbursement fallback
+  if (backendDispatched && backendResult) {
+    const newBalance = backendResult.walletBalance !== undefined
+      ? backendResult.walletBalance
+      : Math.max(0, currentBalance - amount);
+
+    await updateUserWalletBalanceInFirestore(userId, newBalance);
+    const updatedProfile: UserProfile = { ...currentUser, walletBalance: newBalance };
+    saveUserProfileToFirestore(updatedProfile).catch(() => {});
+    try {
+      localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
+    } catch {
+      // ignore
+    }
+
+    const withdrawTx: WalletTransaction = {
+      id: withdrawReference,
+      userId,
+      type: 'withdrawal',
+      amount,
+      currency: 'UGX',
+      status: 'completed',
+      description: `Cashout to ${detectedProvider.toUpperCase()} (${formattedPhone}) - ${amount.toLocaleString()} UGX`,
+      reference: withdrawReference,
+      pesajetTransactionId: backendResult.transactionId || withdrawReference,
+      timestamp: Date.now(),
+    };
+    recordWalletTransactionInFirestore(withdrawTx).catch(() => {});
+
+    return {
+      success: true,
+      walletBalance: newBalance,
+      reference: withdrawReference,
+      message: backendResult.message || `Cashout of ${amount.toLocaleString()} UGX sent to ${formattedPhone}!`,
+    };
+  }
+
+  // 2. Direct PesaJet Disbursement API (for Android Native APK & Standalone Client)
+  console.log('[PaymentService] Initiating direct PesaJet disbursement for APK:', {
+    phoneNumber: formattedPhone,
+    amount,
+    provider: detectedProvider,
+    reference: withdrawReference,
+  });
+
+  const directPayload = {
+    type: 'DISBURSEMENT',
+    amount: Number(amount),
+    currency: 'UGX',
+    phoneNumber: formattedPhone,
+    provider: detectedProvider,
+    reference: withdrawReference,
+    idempotencyKey,
+    description: safeDescription,
+  };
+
+  let response: Response;
   try {
-    fetch(`${PESAJET_BASE_URL}/payments`, {
+    response = await fetch(`${PESAJET_BASE_URL}/payments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': PESAJET_PUBLIC_KEY,
       },
-      body: JSON.stringify({
-        type: 'DISBURSEMENT',
-        amount,
-        currency: 'UGX',
-        phoneNumber: formattedPhone,
-        provider: detectedProvider,
-        reference: withdrawReference,
-        idempotencyKey: `wth-${userId}-${Date.now()}`,
-        description: `Checkers Arena Payout to ${formattedPhone}`,
-      }),
-    }).catch((e) => console.warn('[PaymentService] Direct disbursement error:', e));
+      body: JSON.stringify(directPayload),
+    });
+  } catch (networkErr: any) {
+    console.error('[PaymentService] Direct PesaJet network connection failed:', networkErr);
+    throw new Error('Unable to connect to Mobile Money payout gateway. Please check your internet connection and try again.');
+  }
+
+  const responseText = await response.text();
+  console.log(`[PaymentService] PesaJet disbursement response (${response.status}):`, responseText);
+
+  let data: any = {};
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Payment gateway returned unexpected format (HTTP ${response.status})`);
+  }
+
+  if (!response.ok) {
+    const rawError = data?.message || data?.error || `Disbursement rejected (HTTP ${response.status})`;
+    console.error('[PaymentService] PesaJet disbursement rejected:', rawError);
+
+    if (rawError.toLowerCase().includes('insufficient balance') || rawError.toLowerCase().includes('balance for disbursement')) {
+      throw new Error(
+        'Payout gateway float is currently replenishing. Your wallet balance has NOT been deducted and remains safe. Please retry in a few moments.'
+      );
+    }
+    throw new Error(friendlyPaymentError(rawError));
+  }
+
+  // Disbursement successfully dispatched by gateway!
+  const txId = data.transactionId || data.id || data.data?.transactionId || data.data?.id || withdrawReference;
+  const newBalance = Math.max(0, currentBalance - amount);
+
+  // Now deduct user's wallet in Firestore and local storage
+  await updateUserWalletBalanceInFirestore(userId, newBalance);
+  const updatedProfile: UserProfile = { ...currentUser, walletBalance: newBalance };
+  saveUserProfileToFirestore(updatedProfile).catch(() => {});
+  try {
+    localStorage.setItem('checkers_user_profile', JSON.stringify(updatedProfile));
   } catch {
     // ignore
   }
+
+  // Record completed withdrawal transaction in Firestore
+  const withdrawTx: WalletTransaction = {
+    id: withdrawReference,
+    userId,
+    type: 'withdrawal',
+    amount,
+    currency: 'UGX',
+    status: 'completed',
+    description: `Cashout to ${detectedProvider.toUpperCase()} (${formattedPhone}) - ${amount.toLocaleString()} UGX`,
+    reference: withdrawReference,
+    pesajetTransactionId: txId,
+    timestamp: Date.now(),
+  };
+  recordWalletTransactionInFirestore(withdrawTx).catch(() => {});
 
   return {
     success: true,
     walletBalance: newBalance,
     reference: withdrawReference,
-    message: `Cashout of ${amount.toLocaleString()} UGX submitted successfully! Ref: ${withdrawReference}`,
+    message: `Cashout of ${amount.toLocaleString()} UGX initiated to ${formattedPhone}! Funds will arrive on your phone shortly.`,
   };
 }
 

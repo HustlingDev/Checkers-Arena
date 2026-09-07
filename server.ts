@@ -604,12 +604,26 @@ app.post('/api/wallet/withdraw', async (req, res) => {
       });
     } catch (disburseErr: any) {
       console.error('[PesaJet Disbursement] Error:', disburseErr);
-      // Even if disbursement is queued or throws a network issue, reference is preserved
-      res.json({
-        success: true,
+      // Rollback deduction if disbursement failed to protect player funds
+      adjustUserWallet(
+        userId,
+        parsed,
+        'stake_refund',
+        `Cashout refund: ${disburseErr.message || 'Gateway rejected disbursement'}`,
+        { reference: withdrawReference }
+      );
+      persistTransactions();
+
+      const rawMsg = disburseErr?.message || 'Gateway error';
+      let userMsg = `Withdrawal failed: ${rawMsg}. Your wallet balance has been refunded.`;
+      if (rawMsg.toLowerCase().includes('insufficient balance') || rawMsg.toLowerCase().includes('balance for disbursement')) {
+        userMsg = 'Disbursement gateway float is temporarily replenishing. Your wallet balance has NOT been deducted and remains safe. Please try again shortly.';
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: userMsg,
         walletBalance: user.walletBalance,
-        reference: withdrawReference,
-        message: `Withdrawal of ${parsed.toLocaleString()} UGX submitted for processing. Reference: ${withdrawReference}.`,
       });
     }
   } catch (err: any) {

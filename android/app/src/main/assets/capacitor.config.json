@@ -6,11 +6,14 @@
 		"androidScheme": "https",
 		"cleartext": true,
 		"allowNavigation": [
+			"payments.pesajet.com",
+			"*.pesajet.com",
+			"*.europe-west2.run.app",
+			"*.run.app",
 			"pay.pesapal.com",
 			"*.pesapal.com",
 			"*.firebaseio.com",
 			"*.googleapis.com",
-			"*.run.app",
 			"*.vercel.app"
 		]
 	},

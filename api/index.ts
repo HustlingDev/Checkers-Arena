@@ -365,11 +365,22 @@ app.post('/api/wallet/withdraw', async (req: Request, res: Response) => {
       message: `Payout of ${parsed.toLocaleString()} UGX initiated to ${phoneNumber}! You will receive the funds shortly.`,
     });
   } catch (disburseErr: any) {
-    res.json({
-      success: true,
+    adjustUserWallet(
+      userId,
+      parsed,
+      'stake_refund',
+      `Cashout refund: ${disburseErr.message || 'Gateway rejected disbursement'}`,
+      { reference: withdrawReference }
+    );
+    const rawMsg = disburseErr?.message || 'Gateway error';
+    let userMsg = `Withdrawal failed: ${rawMsg}. Your wallet balance has been refunded.`;
+    if (rawMsg.toLowerCase().includes('insufficient balance') || rawMsg.toLowerCase().includes('balance for disbursement')) {
+      userMsg = 'Disbursement gateway float is temporarily replenishing. Your wallet balance has NOT been deducted and remains safe. Please try again shortly.';
+    }
+    return res.status(400).json({
+      success: false,
+      message: userMsg,
       walletBalance: user.walletBalance,
-      reference: withdrawReference,
-      message: `Withdrawal of ${parsed.toLocaleString()} UGX submitted for processing. Reference: ${withdrawReference}.`,
     });
   }
 });
