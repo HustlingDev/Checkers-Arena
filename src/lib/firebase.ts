@@ -1321,6 +1321,55 @@ export async function getUserTransactionsFromFirestore(userId: string): Promise<
   }
 }
 
+/**
+ * Real-time listener for user wallet transactions
+ */
+export function subscribeToUserTransactions(
+  userId: string,
+  callback: (transactions: WalletTransaction[]) => void
+): () => void {
+  try {
+    const txRef = collection(db, 'transactions');
+    const q = query(txRef, where('userId', '==', userId), limit(50));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const results: WalletTransaction[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data() as any;
+          results.push({
+            id: d.id,
+            userId: data.userId || userId,
+            type: data.type || 'deposit',
+            amount: Number(data.amount) || 0,
+            currency: data.currency || 'UGX',
+            status: data.status || 'completed',
+            description: data.description || '',
+            reference: data.reference,
+            transactionReference: data.transactionReference,
+            pesajetTransactionId: data.pesajetTransactionId,
+            timestamp: data.timestamp || Date.now(),
+          });
+        });
+        results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        if (results.length > 0) {
+          try {
+            localStorage.setItem(`checkers_tx_${userId}`, JSON.stringify(results));
+          } catch {}
+        }
+        callback(results);
+      },
+      (err) => {
+        console.warn('subscribeToUserTransactions error:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to setup subscribeToUserTransactions:', err);
+    return () => {};
+  }
+}
+
 export async function updateUserWalletBalanceInFirestore(
   userId: string,
   newBalance: number,

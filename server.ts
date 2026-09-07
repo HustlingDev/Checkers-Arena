@@ -93,8 +93,7 @@ try {
       rawUsers.forEach((u: UserProfile) => {
         // Filter out any previous fake arena users
         if (!u.id.startsWith('usr_arena_')) {
-          const isHackerUg = u.email === 'hackerug06@gmail.com' || u.username === 'HackerUg' || u.id === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33';
-          const balance = isHackerUg ? Math.max(1500, u.walletBalance || 0) : (typeof u.walletBalance === 'number' ? u.walletBalance : 0);
+          const balance = typeof u.walletBalance === 'number' ? u.walletBalance : 0;
           usersMap.set(u.id, {
             ...u,
             walletBalance: balance,
@@ -654,10 +653,6 @@ app.post('/api/wallet/sync-user', (req, res) => {
       user?.id === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33';
 
     if (user) {
-      if (isHackerUg && (user.walletBalance || 0) < 1500) {
-        user.walletBalance = 1500;
-        persistUsers();
-      }
       return res.json({ success: true, walletBalance: user.walletBalance, user });
     }
 
@@ -755,12 +750,9 @@ wss.on('connection', (ws: WebSocket) => {
               cleanUsername.toLowerCase() === 'hackerug' ||
               existingUser.id === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33';
             const clientBal = typeof payload.walletBalance === 'number' && payload.walletBalance >= 0 ? payload.walletBalance : undefined;
-            let effectiveBalance = clientBal !== undefined && clientBal > (existingUser.walletBalance || 0)
-              ? clientBal
-              : (existingUser.walletBalance || 0);
-            if (isHackerUg && effectiveBalance < 1500) {
-              effectiveBalance = 1500;
-            }
+            const effectiveBalance = typeof existingUser.walletBalance === 'number'
+              ? existingUser.walletBalance
+              : (clientBal !== undefined ? clientBal : 0);
 
             userProfile = {
               ...existingUser,
@@ -1777,12 +1769,12 @@ function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
   if (stakeAmount === 200) return 30;
   if (stakeAmount === 500) return 50;
-  if (stakeAmount === 1000) return 100;
-  if (stakeAmount === 2000) return 400;
-  if (stakeAmount === 5000) return 1000;
-  if (stakeAmount === 10000) return 2000;
-  if (stakeAmount === 20000) return 4000;
-  return Math.round(stakeAmount * 0.20);
+  if (stakeAmount === 1000) return 80;
+  if (stakeAmount === 2000) return 200;
+  if (stakeAmount === 5000) return 500;
+  if (stakeAmount === 10000) return 1000;
+  if (stakeAmount === 20000) return 2000;
+  return Math.round(stakeAmount * 0.10);
 }
 
 // Helper: Handle game end statistics, pot distribution & Elo update

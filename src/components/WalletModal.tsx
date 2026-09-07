@@ -7,6 +7,7 @@ import {
   verifyMobileMoneyStatus,
   withdrawMobileMoney,
   fetchUserTransactions,
+  subscribeToUserTransactions,
 } from '../lib/paymentService';
 import {
   Wallet,
@@ -79,8 +80,15 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const pollIntervalRef = useRef<any>(null);
 
   useEffect(() => {
+    let unsubscribeTx: (() => void) | null = null;
     if (isOpen) {
       fetchTransactions();
+      unsubscribeTx = subscribeToUserTransactions(currentUser.id, (realtimeTxs) => {
+        if (Array.isArray(realtimeTxs)) {
+          setTransactions(realtimeTxs);
+          setTransactionsLoading(false);
+        }
+      });
       if (profilePhone) {
         detectProviderFromPhone(profilePhone);
       }
@@ -89,6 +97,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     }
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (unsubscribeTx) unsubscribeTx();
     };
   }, [isOpen, currentUser.id, profilePhone]);
 
@@ -743,42 +752,64 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {transactions.map((tx) => (
-                  <div
-                    key={tx.id}
-                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="font-bold text-white flex items-center gap-1.5">
+                {transactions.map((tx) => {
+                  const isCredit =
+                    tx.type === 'deposit' ||
+                    tx.type === 'win' ||
+                    tx.type === 'stake_win' ||
+                    tx.type === 'welcome_bonus' ||
+                    tx.type === 'stake_refund' ||
+                    tx.type === 'bonus';
+                  const typeLabel =
+                    tx.type === 'stake_win'
+                      ? 'Game Winnings'
+                      : tx.type === 'stake_entry'
+                      ? 'Game Stake'
+                      : tx.type === 'stake_refund'
+                      ? 'Refund'
+                      : tx.type === 'welcome_bonus'
+                      ? 'Welcome Bonus'
+                      : tx.type === 'withdrawal'
+                      ? 'Cashout'
+                      : tx.type;
+                  const dateObj = new Date(tx.timestamp || tx.createdAt || Date.now());
+
+                  return (
+                    <div
+                      key={tx.id}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-white flex items-center gap-1.5">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              isCredit ? 'bg-emerald-400' : 'bg-rose-400'
+                            }`}
+                          />
+                          <span className="capitalize">{typeLabel}</span>
+                          <span className="text-[10px] text-slate-500">
+                            {dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
+                            {dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-1">{tx.description}</p>
+                      </div>
+
+                      <div className="text-right">
                         <span
-                          className={`w-2 h-2 rounded-full ${
-                            tx.type === 'deposit' || tx.type === 'win' || tx.type === 'bonus'
-                              ? 'bg-emerald-400'
-                              : 'bg-rose-400'
+                          className={`font-black font-mono ${
+                            isCredit ? 'text-emerald-400' : 'text-rose-400'
                           }`}
-                        />
-                        <span className="capitalize">{tx.type}</span>
-                        <span className="text-[10px] text-slate-500">
-                          {new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        >
+                          {isCredit ? `+${tx.amount.toLocaleString()}` : `-${tx.amount.toLocaleString()}`} UGX
+                        </span>
+                        <span className="text-[9px] text-slate-500 block uppercase font-bold">
+                          {tx.status}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 line-clamp-1">{tx.description}</p>
                     </div>
-
-                    <div className="text-right">
-                      <span
-                        className={`font-black font-mono ${
-                          tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {tx.amount >= 0 ? `+${tx.amount.toLocaleString()}` : tx.amount.toLocaleString()} UGX
-                      </span>
-                      <span className="text-[9px] text-slate-500 block uppercase font-bold">
-                        {tx.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

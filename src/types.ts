@@ -62,12 +62,12 @@ export function getGameServiceFee(stakeAmount: number): number {
   if (stakeAmount <= 0) return 0;
   if (stakeAmount === 200) return 30;
   if (stakeAmount === 500) return 50;
-  if (stakeAmount === 1000) return 100;
-  if (stakeAmount === 2000) return 400;
-  if (stakeAmount === 5000) return 1000;
-  if (stakeAmount === 10000) return 2000;
-  if (stakeAmount === 20000) return 4000;
-  return Math.round(stakeAmount * 0.20);
+  if (stakeAmount === 1000) return 80;
+  if (stakeAmount === 2000) return 200;
+  if (stakeAmount === 5000) return 500;
+  if (stakeAmount === 10000) return 1000;
+  if (stakeAmount === 20000) return 2000;
+  return Math.round(stakeAmount * 0.10);
 }
 
 export function getNetGameWinnings(stakeAmount: number): number {
@@ -129,7 +129,7 @@ export const STAKE_TIERS: StakeTier[] = [
     badge: 'Kawajyi',
     watermark: 'Kawajyi',
     category: 'Challenger',
-    description: 'Entry: 1,000 UGX match arena • Service Fee: 100 UGX (Win: 1,900 UGX)',
+    description: 'Entry: 1,000 UGX match arena • Service Fee: 80 UGX (Win: 1,920 UGX)',
   },
   {
     id: '2000',
@@ -139,7 +139,7 @@ export const STAKE_TIERS: StakeTier[] = [
     badge: 'Kagujje',
     watermark: 'Kagujje',
     category: 'Champion',
-    description: 'Entry: 2,000 UGX match arena • Service Fee: 400 UGX (Win: 3,600 UGX)',
+    description: 'Entry: 2,000 UGX match arena • Service Fee: 200 UGX (Win: 3,800 UGX)',
   },
   {
     id: '5000',
@@ -149,7 +149,7 @@ export const STAKE_TIERS: StakeTier[] = [
     badge: 'Abanene',
     watermark: 'Abanene',
     category: 'Master Arena',
-    description: 'Entry: 5,000 UGX match arena • Service Fee: 1,000 UGX (Win: 9,000 UGX)',
+    description: 'Entry: 5,000 UGX match arena • Service Fee: 500 UGX (Win: 9,500 UGX)',
   },
   {
     id: '10000',
@@ -159,7 +159,7 @@ export const STAKE_TIERS: StakeTier[] = [
     badge: 'The Streets',
     watermark: 'The Streets',
     category: 'High Stakes',
-    description: 'Entry: 10,000 UGX match arena • Service Fee: 2,000 UGX (Win: 18,000 UGX)',
+    description: 'Entry: 10,000 UGX match arena • Service Fee: 1,000 UGX (Win: 19,000 UGX)',
   },
   {
     id: '20000',
@@ -169,7 +169,7 @@ export const STAKE_TIERS: StakeTier[] = [
     badge: 'The Experts',
     watermark: 'The Experts',
     category: 'Elite Grandmaster',
-    description: 'Entry: 20,000 UGX match arena • Service Fee: 4,000 UGX (Win: 36,000 UGX)',
+    description: 'Entry: 20,000 UGX match arena • Service Fee: 2,000 UGX (Win: 38,000 UGX)',
   },
 ];
 

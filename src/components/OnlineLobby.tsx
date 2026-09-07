@@ -87,7 +87,7 @@ const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
     gradient: 'from-cyan-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-cyan-500/40 hover:border-cyan-400',
     textColor: 'text-cyan-400',
-    description: 'Standard challenger arena • Service Fee: 100 UGX (Win: 1,900 UGX)',
+    description: 'Standard challenger arena • Service Fee: 80 UGX (Win: 1,920 UGX)',
   },
   {
     amount: 2000,
@@ -98,7 +98,7 @@ const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
     gradient: 'from-indigo-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-indigo-500/40 hover:border-indigo-400',
     textColor: 'text-indigo-400',
-    description: 'Champion arena for seasoned strategists • Service Fee: 400 UGX (Win: 3,600 UGX)',
+    description: 'Champion arena for seasoned strategists • Service Fee: 200 UGX (Win: 3,800 UGX)',
   },
   {
     amount: 5000,
@@ -109,7 +109,7 @@ const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
     gradient: 'from-purple-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-purple-500/40 hover:border-purple-400',
     textColor: 'text-purple-400',
-    description: 'Master tier arena for big players • Service Fee: 1,000 UGX (Win: 9,000 UGX)',
+    description: 'Master tier arena for big players • Service Fee: 500 UGX (Win: 9,500 UGX)',
   },
   {
     amount: 10000,
@@ -120,7 +120,7 @@ const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
     gradient: 'from-rose-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-rose-500/40 hover:border-rose-400',
     textColor: 'text-rose-400',
-    description: 'High stake street arena showdown • Service Fee: 2,000 UGX (Win: 18,000 UGX)',
+    description: 'High stake street arena showdown • Service Fee: 1,000 UGX (Win: 19,000 UGX)',
   },
   {
     amount: 20000,
@@ -131,7 +131,7 @@ const STAKE_CARD_TEMPLATES: StakeCardConfig[] = [
     gradient: 'from-yellow-950/50 via-slate-900 to-slate-950',
     borderColor: 'border-yellow-500/50 hover:border-yellow-400',
     textColor: 'text-yellow-400',
-    description: 'The maximum expert arena • Service Fee: 4,000 UGX (Win: 36,000 UGX)',
+    description: 'The maximum expert arena • Service Fee: 2,000 UGX (Win: 38,000 UGX)',
   },
   {
     amount: 0,

@@ -66,16 +66,6 @@ export default function App() {
       const saved = localStorage.getItem('checkers_user_profile');
       if (saved) {
         const u = JSON.parse(saved);
-        if (
-          u.email === 'hackerug06@gmail.com' ||
-          u.username?.toLowerCase() === 'hackerug' ||
-          u.id === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33'
-        ) {
-          if ((u.walletBalance || 0) < 1500) {
-            u.walletBalance = 1500;
-            localStorage.setItem('checkers_user_profile', JSON.stringify(u));
-          }
-        }
         return u;
       }
     } catch (e) {
@@ -541,27 +531,15 @@ export default function App() {
             .then((cloudProfile) => {
               if (cloudProfile) {
                 setCurrentUser((prev) => {
-                  const isHackerUg =
-                    cloudProfile.email === 'hackerug06@gmail.com' ||
-                    cloudProfile.username?.toLowerCase() === 'hackerug' ||
-                    localUser.email === 'hackerug06@gmail.com' ||
-                    localUser.username?.toLowerCase() === 'hackerug' ||
-                    localUser.id === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33';
-                  let effectiveBal =
-                    prev && typeof prev.walletBalance === 'number' && prev.walletBalance > (cloudProfile.walletBalance || 0)
-                      ? prev.walletBalance
-                      : (cloudProfile.walletBalance || 0);
-                  if (isHackerUg && effectiveBal < 1500) {
-                    effectiveBal = 1500;
-                  }
+                  const effectiveBal =
+                    typeof cloudProfile.walletBalance === 'number'
+                      ? cloudProfile.walletBalance
+                      : (prev && typeof prev.walletBalance === 'number' ? prev.walletBalance : 0);
                   const updated = {
                     ...cloudProfile,
                     walletBalance: effectiveBal,
                   };
                   localStorage.setItem('checkers_user_profile', JSON.stringify(updated));
-                  if (isHackerUg && (cloudProfile.walletBalance || 0) < 1500) {
-                    saveUserProfileToFirestore(updated).catch(() => {});
-                  }
                   return updated;
                 });
               }
@@ -595,17 +573,10 @@ export default function App() {
       if (cloudProfile && cloudProfile.id === userId) {
         setCurrentUser((prev) => {
           if (!prev) return cloudProfile;
-          const isHackerUg =
-            cloudProfile.email === 'hackerug06@gmail.com' ||
-            cloudProfile.username?.toLowerCase() === 'hackerug' ||
-            userId === 'Oruqp2VsDaVfCG7gLt1Y3c1pwZ33';
-          let finalBal =
+          const finalBal =
             typeof cloudProfile.walletBalance === 'number'
               ? cloudProfile.walletBalance
               : prev.walletBalance;
-          if (isHackerUg && finalBal < 1500) {
-            finalBal = 1500;
-          }
 
           if (
             prev.walletBalance !== finalBal ||
@@ -620,9 +591,6 @@ export default function App() {
             };
             try {
               localStorage.setItem('checkers_user_profile', JSON.stringify(updated));
-              if (isHackerUg && (cloudProfile.walletBalance || 0) < 1500) {
-                saveUserProfileToFirestore(updated).catch(() => {});
-              }
             } catch {}
             return updated;
           }

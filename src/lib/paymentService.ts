@@ -6,11 +6,14 @@ import {
   saveUserProfileToFirestore,
   recordWalletTransactionInFirestore,
   getUserTransactionsFromFirestore,
+  subscribeToUserTransactions,
   updateUserWalletBalanceInFirestore,
   getUserProfileFromFirestore,
 } from './firebase';
 import { UserProfile, WalletTransaction } from '../types';
 import { formatUgandaPhone, detectUgandaProvider, sanitizeMomoDescription } from './ugandaPhone';
+
+export { subscribeToUserTransactions };
 
 const PESAJET_PUBLIC_KEY = 'pk_f89be8bd38a605a5eccb68d5719362410e8235e0a9925f20';
 const PESAJET_BASE_URL = 'https://payments.pesajet.com/api/v1';
