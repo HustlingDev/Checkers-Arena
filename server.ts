@@ -1497,9 +1497,43 @@ wss.on('connection', (ws: WebSocket) => {
       const user = usersMap.get(currentUserId);
       if (user) {
         user.status = 'away';
+        user.isOnline = false;
       }
 
-      // Check all active games this user is in
+      // 1. Automatically delete any waiting tables created by this user and refund any escrowed stake
+      const waitingTablesToDelete: string[] = [];
+      for (const [roomId, room] of activeRooms.entries()) {
+        const isCreator = room.redPlayer?.id === currentUserId || room.blackPlayer?.id === currentUserId;
+        if (room.status === 'waiting' && isCreator) {
+          if (room.stakeAmount > 0 && room.escrowCollected) {
+            for (const [playerId, escrowAmt] of Object.entries(room.escrowCollected)) {
+              if (escrowAmt > 0) {
+                adjustUserWallet(
+                  playerId,
+                  escrowAmt,
+                  'stake_refund',
+                  `Refund: game table deleted because host went offline (${escrowAmt} UGX)`
+                );
+              }
+            }
+          }
+          waitingTablesToDelete.push(roomId);
+        }
+      }
+
+      for (const roomId of waitingTablesToDelete) {
+        activeRooms.delete(roomId);
+        broadcast('game:table_deleted', { roomId });
+      }
+
+      // 2. Clean up any pending challenges involving this user so no money is ever held or deducted
+      for (const [chId, challenge] of activeChallenges.entries()) {
+        if (challenge.fromUser.id === currentUserId || challenge.toUser.id === currentUserId) {
+          activeChallenges.delete(chId);
+        }
+      }
+
+      // 3. Check all active playing games this user is in
       for (const room of activeRooms.values()) {
         if (room.status === 'playing') {
           const isRed = room.redPlayer?.id === currentUserId;
@@ -1518,14 +1552,42 @@ wss.on('connection', (ws: WebSocket) => {
       }
 
       broadcastPresence();
+      if (waitingTablesToDelete.length > 0) {
+        broadcast('lobby:rooms', Array.from(activeRooms.values()));
+      }
     }
   });
 });
 
-// Auto-check for 20-second turn timeouts & internet disconnect forfeits every 1 second
+// Auto-check for 20-second turn timeouts, internet disconnect forfeits, & orphaned waiting tables every 1 second
 setInterval(() => {
   const now = Date.now();
+  let roomsChanged = false;
+
   for (const [roomId, room] of activeRooms.entries()) {
+    // Check orphaned waiting tables where the host went offline
+    if (room.status === 'waiting') {
+      const hostId = room.redPlayer?.id || room.blackPlayer?.id;
+      if (hostId && !userSockets.has(hostId)) {
+        if (room.stakeAmount > 0 && room.escrowCollected) {
+          for (const [playerId, escrowAmt] of Object.entries(room.escrowCollected)) {
+            if (escrowAmt > 0) {
+              adjustUserWallet(
+                playerId,
+                escrowAmt,
+                'stake_refund',
+                `Refund: table closed because host is offline (${escrowAmt} UGX)`
+              );
+            }
+          }
+        }
+        activeRooms.delete(roomId);
+        broadcast('game:table_deleted', { roomId });
+        roomsChanged = true;
+        continue;
+      }
+    }
+
     if (room.status !== 'playing') continue;
 
     const currentTurnColor = room.currentTurn;
@@ -1554,6 +1616,10 @@ setInterval(() => {
       broadcastToRoom(room, 'game:updated', room);
       broadcast('lobby:rooms', Array.from(activeRooms.values()));
     }
+  }
+
+  if (roomsChanged) {
+    broadcast('lobby:rooms', Array.from(activeRooms.values()));
   }
 }, 1000);
 

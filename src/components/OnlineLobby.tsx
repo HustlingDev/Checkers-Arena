@@ -510,18 +510,8 @@ export const OnlineLobby: React.FC<OnlineLobbyProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons: Prominent Deposit Button + Host Table */}
+              {/* Action Buttons: Host Table */}
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  id="btn-stake-section-deposit"
-                  onClick={onOpenWallet}
-                  className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs shadow-md transition active:scale-95 flex items-center gap-1 cursor-pointer border border-emerald-300"
-                  title="Deposit Funds via Mobile Money"
-                >
-                  <Wallet className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Deposit Funds</span>
-                </button>
-
                 <button
                   id="btn-stake-section-host"
                   onClick={() => handleHostTableWithStakeCheck(selectedStakeSection)}

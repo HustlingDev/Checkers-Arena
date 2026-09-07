@@ -43,6 +43,7 @@ import {
   subscribeToAllGameRooms,
   saveGameRoomToFirestore,
   deleteGameRoomFromFirestore,
+  cleanUpUserWaitingRoomsFromFirestore,
   deleteGuestPlayerFromFirestore,
   cleanUpAllGuestPlayersFromFirestore,
   setUserOfflineInFirestore,
@@ -150,6 +151,7 @@ export default function App() {
           const user = JSON.parse(saved);
           if (user?.id) {
             setUserOfflineInFirestore(user.id).catch(() => {});
+            cleanUpUserWaitingRoomsFromFirestore(user.id).catch(() => {});
             if (
               user?.isGuest &&
               user?.id?.startsWith('guest_') &&
@@ -397,8 +399,6 @@ export default function App() {
                       if (lastMove.capturedCount > 0) sounds.playCapture();
                       else sounds.playMove();
                       if (lastMove.becameKing) setTimeout(() => sounds.playKing(), 200);
-                      const oppName = lastMove.playerColor === 'red' ? (payload.redPlayer?.username || 'Red') : (payload.blackPlayer?.username || 'Black');
-                      showNotification(`🔔 ${oppName} made a move! It's your turn!`, 'info', 3500);
                     }
                   }
                 }
@@ -408,7 +408,6 @@ export default function App() {
               case 'game:table_deleted': {
                 setGameRooms((prev) => prev.filter((r) => r.id !== payload.roomId));
                 setActiveRoom((prev) => (prev?.id === payload.roomId ? null : prev));
-                showNotification(payload.message || 'Game table was closed.', 'info', 4000);
                 break;
               }
 
@@ -623,11 +622,6 @@ export default function App() {
             if (lastMove.becameKing) {
               setTimeout(() => sounds.playKing(), 200);
             }
-            const oppName =
-              lastMove.playerColor === 'red'
-                ? roomData.redPlayer?.username || 'Red'
-                : roomData.blackPlayer?.username || 'Black';
-            showNotification(`🔔 ${oppName} made a move! It's your turn!`, 'info', 3500);
           }
         }
         setActiveRoom(roomData);
@@ -885,7 +879,6 @@ export default function App() {
       setActiveRoom(null);
       setGameChatMessages([]);
     }
-    showNotification('Game table deleted and closed.', 'info', 4000);
   };
 
   const recordGameOutcome = (userColor: 'red' | 'black', winnerColor: string | null) => {

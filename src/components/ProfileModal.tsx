@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle2,
+  Check,
 } from 'lucide-react';
 
 interface ProfileModalProps {
@@ -131,26 +132,42 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           )}
         </div>
 
-        {/* Change Avatar */}
-        <div className="space-y-1">
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
-            Change Avatar
-          </label>
-          <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 custom-scrollbar">
-            {AVATAR_OPTIONS.map((avatar) => (
-              <button
-                key={avatar.id}
-                type="button"
-                onClick={() => setSelectedAvatarId(avatar.id)}
-                className={`p-1.5 rounded-xl flex items-center justify-center transition ${
-                  avatar.id === selectedAvatarId
-                    ? 'bg-amber-500/20 ring-2 ring-amber-400'
-                    : 'bg-slate-950/60 hover:bg-slate-800'
-                }`}
-              >
-                <AvatarBadge avatarId={avatar.id} size="sm" />
-              </button>
-            ))}
+        {/* Change Avatar - Matches the User Screenshot Theme */}
+        <div className="space-y-2 bg-slate-950 p-3.5 rounded-2xl border border-amber-500/40">
+          <div className="text-center">
+            <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-yellow-400">
+              CHOOSE AN AVATAR
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2.5 pt-1">
+            {AVATAR_OPTIONS.map((avatar) => {
+              const isSelected = avatar.id === selectedAvatarId;
+              return (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  onClick={() => setSelectedAvatarId(avatar.id)}
+                  className={`relative p-2 rounded-2xl flex flex-col items-center justify-center transition cursor-pointer border ${
+                    isSelected
+                      ? 'bg-amber-950/40 border-amber-400 shadow-md ring-1 ring-amber-400'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                  }`}
+                >
+                  <AvatarBadge avatarId={avatar.id} size="lg" />
+                  <span className="text-[10px] font-bold text-slate-300 mt-1 truncate max-w-full text-center">
+                    {avatar.name}
+                  </span>
+
+                  {/* Green checkmark badge at top-right exactly as shown in screenshot */}
+                  {isSelected && (
+                    <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg border border-slate-950">
+                      <Check className="w-3.5 h-3.5 text-white stroke-[3.5]" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 

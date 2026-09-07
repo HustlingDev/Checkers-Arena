@@ -1066,6 +1066,23 @@ export async function deleteGameRoomFromFirestore(roomId: string): Promise<void>
   }
 }
 
+export async function cleanUpUserWaitingRoomsFromFirestore(userId: string): Promise<void> {
+  try {
+    const q = query(collection(db, 'rooms'), limit(40));
+    const snap = await getDocs(q);
+    snap.forEach(async (docSnap) => {
+      const data = docSnap.data();
+      const creatorId = data.redPlayer?.id || data.blackPlayer?.id;
+      if (creatorId === userId && data.status === 'waiting') {
+        await deleteDoc(docSnap.ref);
+        console.log(`[Firestore] Cleaned up waiting room ${docSnap.id} for offline user ${userId}`);
+      }
+    });
+  } catch (e) {
+    console.warn('cleanUpUserWaitingRoomsFromFirestore error:', e);
+  }
+}
+
 export function subscribeToAllGameRooms(callback: (rooms: GameRoom[]) => void) {
   try {
     const q = query(collection(db, 'rooms'), limit(30));

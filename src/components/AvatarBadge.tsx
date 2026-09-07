@@ -1,17 +1,6 @@
 import React from 'react';
 import { getAvatarById } from '../lib/avatars';
-import {
-  Crown,
-  Shield,
-  Gem,
-  Swords,
-  Zap,
-  Flame,
-  Target,
-  Star,
-  Award,
-  Trophy,
-} from 'lucide-react';
+import { CartoonAvatar } from './CartoonAvatars';
 
 interface AvatarBadgeProps {
   avatarId: string;
@@ -19,6 +8,7 @@ interface AvatarBadgeProps {
   showStatus?: boolean;
   status?: 'online' | 'in-game' | 'away';
   className?: string;
+  color?: string;
 }
 
 export const AvatarBadge: React.FC<AvatarBadgeProps> = ({
@@ -30,66 +20,38 @@ export const AvatarBadge: React.FC<AvatarBadgeProps> = ({
 }) => {
   const avatar = getAvatarById(avatarId);
 
-  const renderIcon = () => {
-    const iconProps = { className: 'text-white drop-shadow-sm' };
-    switch (avatar.iconSvg) {
-      case 'crown':
-        return <Crown {...iconProps} size={getIconSize()} />;
-      case 'shield':
-        return <Shield {...iconProps} size={getIconSize()} />;
-      case 'gem':
-        return <Gem {...iconProps} size={getIconSize()} />;
-      case 'sword':
-        return <Swords {...iconProps} size={getIconSize()} />;
-      case 'zap':
-        return <Zap {...iconProps} size={getIconSize()} />;
-      case 'flame':
-        return <Flame {...iconProps} size={getIconSize()} />;
-      case 'target':
-        return <Target {...iconProps} size={getIconSize()} />;
-      case 'star':
-        return <Star {...iconProps} size={getIconSize()} />;
-      case 'award':
-        return <Award {...iconProps} size={getIconSize()} />;
-      case 'trophy':
-        return <Trophy {...iconProps} size={getIconSize()} />;
-      default:
-        return <Crown {...iconProps} size={getIconSize()} />;
+  function getPixelSize() {
+    switch (size) {
+      case 'sm':
+        return 32;
+      case 'md':
+        return 44;
+      case 'lg':
+        return 64;
+      case 'xl':
+        return 96;
     }
-  };
+  }
 
   function getDimensions() {
     switch (size) {
       case 'sm':
-        return 'w-8 h-8 rounded-full text-xs';
+        return 'w-8 h-8 rounded-full border border-amber-500/60';
       case 'md':
-        return 'w-11 h-11 rounded-xl text-sm';
+        return 'w-11 h-11 rounded-xl border-2 border-amber-500/70';
       case 'lg':
-        return 'w-16 h-16 rounded-2xl text-base';
+        return 'w-16 h-16 rounded-2xl border-2 border-amber-500/80';
       case 'xl':
-        return 'w-24 h-24 rounded-3xl text-lg';
-    }
-  }
-
-  function getIconSize() {
-    switch (size) {
-      case 'sm':
-        return 16;
-      case 'md':
-        return 22;
-      case 'lg':
-        return 32;
-      case 'xl':
-        return 48;
+        return 'w-24 h-24 rounded-3xl border-2 border-amber-500';
     }
   }
 
   return (
-    <div className={`relative inline-flex items-center justify-center ${className}`}>
+    <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`}>
       <div
-        className={`bg-gradient-to-br ${avatar.bgGradient} flex items-center justify-center shadow-md ring-2 ring-white/10 ${getDimensions()}`}
+        className={`bg-slate-950 flex items-center justify-center shadow-lg overflow-hidden ${getDimensions()}`}
       >
-        {renderIcon()}
+        <CartoonAvatar avatarId={avatar.id} size={getPixelSize()} />
       </div>
 
       {showStatus && (

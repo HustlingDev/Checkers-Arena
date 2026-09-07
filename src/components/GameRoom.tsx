@@ -186,19 +186,10 @@ export const GameRoom: React.FC<GameRoomProps> = ({
         if (lastMove.becameKing) {
           setTimeout(() => sounds.playKing(), 250);
         }
-
-        // Notify if opponent moved
-        if (lastMove.playerColor !== playerColor && playerColor !== 'spectator') {
-          const oppName = opponent?.username || (isBotGame ? 'Bot AI' : 'Opponent');
-          setMoveNotification(`🔔 ${oppName} made a move! It's your turn!`);
-          const timer = setTimeout(() => setMoveNotification(null), 3500);
-          prevHistoryLenRef.current = currentLen;
-          return () => clearTimeout(timer);
-        }
       }
       prevHistoryLenRef.current = currentLen;
     }
-  }, [room.history?.length, playerColor, opponent?.username, isBotGame]);
+  }, [room.history?.length, playerColor]);
 
   // Victory / Defeat sounds
   useEffect(() => {
@@ -246,19 +237,11 @@ export const GameRoom: React.FC<GameRoomProps> = ({
       
       {/* Floating Animated Emoji Reaction Badge */}
       {latestEmojiReaction && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border-2 border-amber-400 px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 animate-bounce pointer-events-none">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border-2 border-amber-400 px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 pointer-events-none">
           <span className="text-2xl">{latestEmojiReaction.emoji}</span>
           <span className="text-xs font-black text-amber-300">
             {latestEmojiReaction.sender}
           </span>
-        </div>
-      )}
-
-      {/* Opponent Move Notification Toast */}
-      {moveNotification && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-emerald-900/95 border border-emerald-500 text-emerald-100 font-black text-xs px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 animate-fade-in pointer-events-none">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-          <span>{moveNotification}</span>
         </div>
       )}
 
@@ -285,14 +268,14 @@ export const GameRoom: React.FC<GameRoomProps> = ({
           ) : room.status === 'playing' ? (
             isMyTurn ? (
               <div
-                className={`flex items-center gap-1.5 font-black text-[11px] sm:text-xs px-3 py-1 rounded-full border shadow transition ${
+                className={`flex items-center gap-1.5 font-black text-[11px] sm:text-xs px-3 py-1 rounded-full border shadow ${
                   isLowTime
-                    ? 'bg-rose-950 text-rose-200 border-rose-500 animate-bounce'
-                    : 'bg-emerald-950 text-emerald-300 border-emerald-600 animate-pulse'
+                    ? 'bg-rose-950 text-rose-200 border-rose-500 ring-1 ring-rose-500'
+                    : 'bg-emerald-950 text-emerald-300 border-emerald-600'
                 }`}
               >
                 {isLowTime ? (
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
                 ) : (
                   <Sparkles className="w-3 h-3 text-emerald-400" />
                 )}
@@ -409,31 +392,30 @@ export const GameRoom: React.FC<GameRoomProps> = ({
         </div>
       </div>
 
-      {/* DISCONNECTION / NO INTERNET 20-SECOND COUNTDOWN WARNING BANNER */}
+      {/* DISCONNECTION & LOW TIME WARNING BANNERS (Rendered as floating absolute overlay so the board stays 100% static) */}
       {isOpponentDisconnected && room.status === 'playing' && (
-        <div className="bg-gradient-to-r from-amber-600 via-rose-600 to-amber-600 text-white font-black text-xs py-1.5 px-3 rounded-xl shadow-lg border border-amber-400 flex items-center justify-center gap-2 animate-bounce shrink-0 z-30">
-          <AlertTriangle className="w-4 h-4 text-amber-200 animate-spin" />
-          <span>
-            ⚠️ OPPONENT DISCONNECTED: 20s Countdown ({formatTime(timeLeft)}) to Victory! If they don't play, you win!
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 max-w-md w-[92%] bg-gradient-to-r from-amber-700 via-rose-700 to-amber-700 text-white font-black text-xs py-1.5 px-3 rounded-xl shadow-2xl border border-amber-400 flex items-center justify-center gap-2 z-40 pointer-events-none">
+          <AlertTriangle className="w-4 h-4 text-amber-200 shrink-0" />
+          <span className="truncate">
+            ⚠️ OPPONENT DISCONNECTED: 20s Countdown ({formatTime(timeLeft)}) to Victory!
           </span>
         </div>
       )}
 
       {isMeDisconnected && room.status === 'playing' && (
-        <div className="bg-rose-700 text-white font-black text-xs py-1.5 px-3 rounded-xl shadow-lg border border-rose-400 flex items-center justify-center gap-2 animate-pulse shrink-0 z-30">
-          <AlertTriangle className="w-4 h-4 text-rose-200" />
-          <span>
-            ⚠️ CONNECTION LOST: Reconnect and make a move within {formatTime(timeLeft)} or match will be forfeited!
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 max-w-md w-[92%] bg-rose-700 text-white font-black text-xs py-1.5 px-3 rounded-xl shadow-2xl border border-rose-400 flex items-center justify-center gap-2 z-40 pointer-events-none">
+          <AlertTriangle className="w-4 h-4 text-rose-200 shrink-0" />
+          <span className="truncate">
+            ⚠️ CONNECTION LOST: Reconnect within {formatTime(timeLeft)} or match forfeited!
           </span>
         </div>
       )}
 
-      {/* CRITICAL LOW-TIME WARNING BANNER (20s Turn limit) */}
       {!isOpponentDisconnected && !isMeDisconnected && isLowTime && (
-        <div className="bg-rose-600 text-white font-black text-xs py-1 px-3 rounded-xl shadow-lg border border-rose-400 flex items-center justify-center gap-2 animate-bounce shrink-0 z-30">
-          <AlertTriangle className="w-4 h-4" />
-          <span>
-            ⚠️ TIME RUNNING OUT: Only {formatTime(timeLeft)} remaining to execute your move!
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 max-w-md w-[92%] bg-rose-600 text-white font-black text-xs py-1 px-3 rounded-xl shadow-2xl border border-rose-400 flex items-center justify-center gap-2 z-40 pointer-events-none">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="truncate">
+            ⚠️ Turn Time: Only {formatTime(timeLeft)} remaining to play!
           </span>
         </div>
       )}
